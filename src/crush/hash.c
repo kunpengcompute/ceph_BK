@@ -2,6 +2,7 @@
 # include <linux/crush/hash.h>
 #else
 # include "hash.h"
+# include "arm_neon.h"
 #endif
 
 /*
@@ -20,6 +21,58 @@
 		b = b-c;  b = b-a;  b = b^(a<<10);	\
 		c = c-a;  c = c-b;  c = c^(b>>15);	\
 	} while (0)
+
+#define crush_hashmix_x3(a1, b1, c1, a2, b2, c2, a3, b3, c3) do {			\
+				a1 = a1-b1; a2 = a2-b2; a3 = a3-b3; \
+					a1 = a1-c1; a2 = a2-c2; a3 = a3-c3;	\
+						a1 = a1^(c1>>13); a2 = a2^(c2>>13); a3 = a3^(c3>>13);	\
+				b1 = b1-c1; b2 = b2-c2; b3 = b3-c3;  \
+					b1 = b1-a1; b2 = b2-a2; b3 = b3-a3;	\
+						b1 = b1^(a1<<8); b2 = b2^(a2<<8); b3 = b3^(a3<<8);	\
+				c1 = c1-a1; c2 = c2-a2; c3 = c3-a3;  \
+					c1 = c1-b1; c2 = c2-b2; c3 = c3-b3;	\
+						c1 = c1^(b1>>13); c2 = c2^(b2>>13); c3 = c3^(b3>>13);	\
+				a1 = a1-b1; a2 = a2-b2; a3 = a3-b3;  \
+					a1 = a1-c1; a2 = a2-c2; a3 = a3-c3;	\
+						a1 = a1^(c1>>12); a2 = a2^(c2>>12); a3 = a3^(c3>>12);	\
+				b1 = b1-c1; b2 = b2-c2; b3 = b3-c3;  \
+					b1 = b1-a1; b2 = b2-a2; b3 = b3-a3;	\
+						b1 = b1^(a1<<16); b2 = b2^(a2<<16);	b3 = b3^(a3<<16);\
+				c1 = c1-a1; c2 = c2-a2; c3 = c3-a3;  \
+					c1 = c1-b1; c2 = c2-b2; c3 = c3-b3;	\
+						c1 = c1^(b1>>5); c2 = c2^(b2>>5); c3 = c3^(b3>>5);	\
+				a1 = a1-b1; a2 = a2-b2; a3 = a3-b3;  \
+					a1 = a1-c1; a2 = a2-c2; a3 = a3-c3;	\
+						a1 = a1^(c1>>3); a2 = a2^(c2>>3); a3 = a3^(c3>>3);	\
+				b1 = b1-c1; b2 = b2-c2; b3 = b3-c3;  \
+					b1 = b1-a1; b2 = b2-a2; b3 = b3-a3;	\
+						b1 = b1^(a1<<10); b2 = b2^(a2<<10); b3 = b3^(a3<<10);	\
+				c1 = c1-a1; c2 = c2-a2; c3 = c3-a3;  \
+					c1 = c1-b1; c2 = c2-b2; c3 = c3-b3;	\
+						c1 = c1^(b1>>15); c2 = c2^(b2>>15); c3 = c3^(b3>>15);	\
+			} while (0);
+
+#define crush_hashmix_simdx2(a, b, c, a1, b1, c1) {\
+		a = vsubq_u32(a, b); a1 = vsubq_u32(a1, b1); a = vsubq_u32(a, c); a1 = vsubq_u32(a1, c1);\
+			a = veorq_u32(a, vshrq_n_u32(c, 13)); a1 = veorq_u32(a1, vshrq_n_u32(c1, 13));\
+		b = vsubq_u32(b, c); b1 = vsubq_u32(b1, c1); b = vsubq_u32(b, a); b1 = vsubq_u32(b1, a1);\
+			b = veorq_u32(b, vshlq_n_u32(a, 8)); b1 = veorq_u32(b1, vshlq_n_u32(a1, 8));\
+		c = vsubq_u32(c, a); c1 = vsubq_u32(c1, a1); c = vsubq_u32(c, b); c1 = vsubq_u32(c1, b1);\
+			c = veorq_u32(c, vshrq_n_u32(b, 13)); c1 = veorq_u32(c1, vshrq_n_u32(b1, 13));\
+		a = vsubq_u32(a, b); a1 = vsubq_u32(a1, b1); a = vsubq_u32(a, c); a1 = vsubq_u32(a1, c1);\
+			a = veorq_u32(a, vshrq_n_u32(c, 12)); a1 = veorq_u32(a1, vshrq_n_u32(c1, 12));\
+		b = vsubq_u32(b, c); b1 = vsubq_u32(b1, c1); b = vsubq_u32(b, a); b1 = vsubq_u32(b1, a1);\
+			b = veorq_u32(b, vshlq_n_u32(a, 16)); b1 = veorq_u32(b1, vshlq_n_u32(a1, 16));\
+		c = vsubq_u32(c, a); c1 = vsubq_u32(c1, a1); c = vsubq_u32(c, b); c1 = vsubq_u32(c1, b1);\
+			c = veorq_u32(c, vshrq_n_u32(b, 5)); c1 = veorq_u32(c1, vshrq_n_u32(b1, 5));\
+		a = vsubq_u32(a, b); a1 = vsubq_u32(a1, b1); a = vsubq_u32(a, c); a1 = vsubq_u32(a1, c1);\
+			a = veorq_u32(a, vshrq_n_u32(c, 3)); a1 = veorq_u32(a1, vshrq_n_u32(c1, 3));\
+		b = vsubq_u32(b, c); b1 = vsubq_u32(b1, c1); b = vsubq_u32(b, a); b1 = vsubq_u32(b1, a1);\
+			b = veorq_u32(b, vshlq_n_u32(a, 10)); b1 = veorq_u32(b1, vshlq_n_u32(a1, 10));\
+		c = vsubq_u32(c, a); c1 = vsubq_u32(c1, a1); c = vsubq_u32(c, b); c1 = vsubq_u32(c1, b1);\
+			c = veorq_u32(c, vshrq_n_u32(b, 15)); c1 = veorq_u32(c1, vshrq_n_u32(b1, 15));\
+	}while (0);
+
 
 #define crush_hash_seed 1315423911
 
@@ -117,6 +170,93 @@ __u32 crush_hash32_3(int type, __u32 a, __u32 b, __u32 c)
 		return crush_hash32_rjenkins1_3(a, b, c);
 	default:
 		return 0;
+	}
+}
+
+void crush_hash32_3x3(int type, __u32 ai[3], __u32 bi[3], __u32 ci[3], __u32 hashi[3])
+{
+	__u32 x[3];
+	__u32 y[3];
+	__u32 hash[3];
+	__u32 a[3];
+	__u32 b[3];
+	__u32 c[3];
+
+	switch (type) {
+	case CRUSH_HASH_RJENKINS1:
+		for (int i = 0; i < 3; i++) {
+			x[i] = 231232;
+			y[i] = 1232;
+			a[i] = ai[i];
+			b[i] = bi[i];
+			c[i] = ci[i];
+			hash[i] = crush_hash_seed ^ a[i] ^ b[i] ^ c[i];
+		}
+		crush_hashmix_x3(a[0], b[0], hash[0], a[1], b[1], hash[1], a[2], b[2], hash[2]);
+		crush_hashmix_x3(c[0], x[0], hash[0], c[1], x[1], hash[1], c[2], x[2], hash[2]);
+		crush_hashmix_x3(y[0], a[0], hash[0], y[1], a[1], hash[1], y[2], a[2], hash[2]);
+		crush_hashmix_x3(b[0], x[0], hash[0], b[1], x[1], hash[1], b[2], x[2], hash[2]);
+		crush_hashmix_x3(y[0], c[0], hash[0], y[1], c[1], hash[1], y[2], c[2], hash[2]);
+		hashi[0] = hash[0];
+		hashi[1] = hash[1];
+		hashi[2] = hash[2];
+		return;
+	default:
+		return;
+	}
+}
+
+/* Make greater use of pipelines */
+void crush_hash32_3_simdx2(int type, __u32 a[CRUSH_SIMD_NUM * 2],
+					__u32 b[CRUSH_SIMD_NUM * 2], __u32 c[CRUSH_SIMD_NUM * 2], __u32 hash[CRUSH_SIMD_NUM * 2])
+{
+	uint32x4_t a1;
+	uint32x4_t a2;
+	uint32x4_t b1;
+	uint32x4_t b2;
+	uint32x4_t c1;
+	uint32x4_t c2;
+	uint32x4_t hash1;
+	uint32x4_t hash2;
+	uint32x4_t x1;
+	uint32x4_t x2;
+	uint32x4_t y1;
+	uint32x4_t y2;
+	uint32x4_t tmp;
+
+	switch (type) {
+	case CRUSH_HASH_RJENKINS1:
+		a1 = vld1q_u32(&a[0]);
+		a2 = vld1q_u32(&a[CRUSH_SIMD_NUM]);
+		b1 = vld1q_u32(&b[0]);
+		b2 = vld1q_u32(&b[CRUSH_SIMD_NUM]);
+		c1 = vld1q_u32(&c[0]);
+		c2 = vld1q_u32(&c[CRUSH_SIMD_NUM]);
+
+		hash1 = vdupq_n_u32(crush_hash_seed);
+		x1 = vdupq_n_u32(231232);
+		y1 = vdupq_n_u32(1232);
+		hash2 = vdupq_n_u32(crush_hash_seed);
+		x2 = vdupq_n_u32(231232);
+		y2 = vdupq_n_u32(1232);
+
+		hash1 = veorq_u32(hash1, a1);
+		tmp = veorq_u32(b1, c1);
+		hash1 = veorq_u32(hash1, tmp);
+		hash2 = veorq_u32(hash2, a2);
+		tmp = veorq_u32(b2, c2);
+		hash2 = veorq_u32(hash2, tmp);
+
+		crush_hashmix_simdx2(a1, b1, hash1, a2, b2, hash2);
+		crush_hashmix_simdx2(c1, x1, hash1, c2, x2, hash2);
+		crush_hashmix_simdx2(y1, a1, hash1, y2, a2, hash2);
+		crush_hashmix_simdx2(b1, x1, hash1, b2, x2, hash2);
+		crush_hashmix_simdx2(y1, c1, hash1, y2, c2, hash2);
+
+		vst1q_u32(&hash[0], hash1);
+		vst1q_u32(&hash[CRUSH_SIMD_NUM], hash2);
+	default:
+		return;
 	}
 }
 

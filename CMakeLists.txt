@@ -280,7 +280,7 @@ if(WITH_BLUESTORE)
   endif()
 endif()
 
-option(WITH_SPDK "Enable SPDK" OFF)
+option(WITH_SPDK "Enable SPDK" ON)
 if(WITH_SPDK)
   if(NOT WITH_BLUESTORE)
     message(SEND_ERROR "Please enable WITH_BLUESTORE for using SPDK")

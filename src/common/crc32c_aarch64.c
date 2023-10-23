@@ -90,6 +90,168 @@ asm(".arch_extension crypto");
 	PREF4X64L2((PREF_OFFSET), 12)
 
 
+#ifdef HAVE_ARMV8_CRC_CRYPTO_INTRINSICS
+#include <stdint.h>
+#include <arm_acle.h>
+#include <arm_neon.h>
+
+#define CACHELINE_SIZE 64
+#define PREFETCH_NORMAL_LENGTH 1024
+#define PREFETCH_LONG_LENGTH 2048
+#define ONE_CYCLE_LEN 256
+
+uint32_t ceph_crc32c_aarch64(uint32_t crc, unsigned char const *buffer, unsigned len)
+{
+    uint8_t *pos = buffer;
+    if (buffer) {
+        while (len >= ONE_CYCLE_LEN) {
+            __builtin_prefetch(pos + PREFETCH_NORMAL_LENGTH, 0, 0);
+            __builtin_prefetch(pos + PREFETCH_LONG_LENGTH, 0, 2);
+            __builtin_prefetch(pos + PREFETCH_NORMAL_LENGTH + CACHELINE_SIZE, 0, 0);
+            __builtin_prefetch(pos + PREFETCH_LONG_LENGTH + CACHELINE_SIZE, 0, 2);
+            __builtin_prefetch(pos + PREFETCH_NORMAL_LENGTH + CACHELINE_SIZE * 2, 0, 0);
+            __builtin_prefetch(pos + PREFETCH_LONG_LENGTH + CACHELINE_SIZE * 2, 0, 2);
+            __builtin_prefetch(pos + PREFETCH_NORMAL_LENGTH + CACHELINE_SIZE * 3, 0, 0);
+            __builtin_prefetch(pos + PREFETCH_LONG_LENGTH + CACHELINE_SIZE * 3, 0, 2);
+            crc = __crc32cd(crc, *(const uint64_t *)(pos + CACHELINE_SIZE * 0 + 8 * 0));
+            crc = __crc32cd(crc, *(const uint64_t *)(pos + CACHELINE_SIZE * 0 + 8 * 1));
+            crc = __crc32cd(crc, *(const uint64_t *)(pos + CACHELINE_SIZE * 0 + 8 * 2));
+            crc = __crc32cd(crc, *(const uint64_t *)(pos + CACHELINE_SIZE * 0 + 8 * 3));
+            crc = __crc32cd(crc, *(const uint64_t *)(pos + CACHELINE_SIZE * 0 + 8 * 4));
+            crc = __crc32cd(crc, *(const uint64_t *)(pos + CACHELINE_SIZE * 0 + 8 * 5));
+            crc = __crc32cd(crc, *(const uint64_t *)(pos + CACHELINE_SIZE * 0 + 8 * 6));
+            crc = __crc32cd(crc, *(const uint64_t *)(pos + CACHELINE_SIZE * 0 + 8 * 7));
+
+            crc = __crc32cd(crc, *(const uint64_t *)(pos + CACHELINE_SIZE * 1 + 8 * 0));
+            crc = __crc32cd(crc, *(const uint64_t *)(pos + CACHELINE_SIZE * 1 + 8 * 1));
+            crc = __crc32cd(crc, *(const uint64_t *)(pos + CACHELINE_SIZE * 1 + 8 * 2));
+            crc = __crc32cd(crc, *(const uint64_t *)(pos + CACHELINE_SIZE * 1 + 8 * 3));
+            crc = __crc32cd(crc, *(const uint64_t *)(pos + CACHELINE_SIZE * 1 + 8 * 4));
+            crc = __crc32cd(crc, *(const uint64_t *)(pos + CACHELINE_SIZE * 1 + 8 * 5));
+            crc = __crc32cd(crc, *(const uint64_t *)(pos + CACHELINE_SIZE * 1 + 8 * 6));
+            crc = __crc32cd(crc, *(const uint64_t *)(pos + CACHELINE_SIZE * 1 + 8 * 7));
+
+            crc = __crc32cd(crc, *(const uint64_t *)(pos + CACHELINE_SIZE * 2 + 8 * 0));
+            crc = __crc32cd(crc, *(const uint64_t *)(pos + CACHELINE_SIZE * 2 + 8 * 1));
+            crc = __crc32cd(crc, *(const uint64_t *)(pos + CACHELINE_SIZE * 2 + 8 * 2));
+            crc = __crc32cd(crc, *(const uint64_t *)(pos + CACHELINE_SIZE * 2 + 8 * 3));
+            crc = __crc32cd(crc, *(const uint64_t *)(pos + CACHELINE_SIZE * 2 + 8 * 4));
+            crc = __crc32cd(crc, *(const uint64_t *)(pos + CACHELINE_SIZE * 2 + 8 * 5));
+            crc = __crc32cd(crc, *(const uint64_t *)(pos + CACHELINE_SIZE * 2 + 8 * 6));
+            crc = __crc32cd(crc, *(const uint64_t *)(pos + CACHELINE_SIZE * 2 + 8 * 7));
+
+            crc = __crc32cd(crc, *(const uint64_t *)(pos + CACHELINE_SIZE * 3 + 8 * 0));
+            crc = __crc32cd(crc, *(const uint64_t *)(pos + CACHELINE_SIZE * 3 + 8 * 1));
+            crc = __crc32cd(crc, *(const uint64_t *)(pos + CACHELINE_SIZE * 3 + 8 * 2));
+            crc = __crc32cd(crc, *(const uint64_t *)(pos + CACHELINE_SIZE * 3 + 8 * 3));
+            crc = __crc32cd(crc, *(const uint64_t *)(pos + CACHELINE_SIZE * 3 + 8 * 4));
+            crc = __crc32cd(crc, *(const uint64_t *)(pos + CACHELINE_SIZE * 3 + 8 * 5));
+            crc = __crc32cd(crc, *(const uint64_t *)(pos + CACHELINE_SIZE * 3 + 8 * 6));
+            crc = __crc32cd(crc, *(const uint64_t *)(pos + CACHELINE_SIZE * 3 + 8 * 7));
+
+            pos += ONE_CYCLE_LEN;
+            len -= ONE_CYCLE_LEN;
+        }
+
+        while (len >= 16) {
+            crc = __crc32cd(crc, *(const uint64_t *)(pos));
+            crc = __crc32cd(crc, *(const uint64_t *)(pos + 8));
+            pos += 16;
+            len -= 16;
+        }
+
+        while (len >= 8) {
+            crc = __crc32cd(crc, *(const uint64_t *)(pos));
+            pos += 8;
+            len -= 8;
+        }
+
+        if (len >= 4) {
+            crc = __crc32cw(crc, *(uint32_t *)pos);
+            pos += 4;
+            len -= 4;
+        }
+
+        if (len >= 2) {
+            crc = __crc32ch(crc, *(uint16_t *)pos);
+            pos += 2;
+            len -= 2;
+        }
+
+        if (len == 1) {
+            crc = __crc32cb(crc, *pos);
+        }
+    } else {
+        int64_t length = len;
+    	uint32_t crc0, crc1, crc2;
+#ifdef HAVE_ARMV8_CRYPTO
+	        if (ceph_arch_aarch64_pmull) {
+#ifdef HAVE_ARMV8_CRC_CRYPTO_INTRINSICS
+		const poly64_t k1 = 0xe417f38a;
+		uint64_t t0;
+
+		while ((length -= 1024) >= 0) {
+			crc0 = __crc32cd(crc, 0);
+
+			CRC32C7X3X8_ZERO;
+			CRC32C7X3X8_ZERO;
+			CRC32C7X3X8_ZERO;
+			CRC32C7X3X8_ZERO;
+			CRC32C7X3X8_ZERO;
+			CRC32C7X3X8_ZERO;
+
+			/* Merge crc0 into crc: crc0 multiply by K1 */
+
+			t0 = (uint64_t)vmull_p64(crc0, k1);
+			crc = __crc32cd(0, t0);
+		}
+#else /* !HAVE_ARMV8_CRC_CRYPTO_INTRINSICS */
+		__asm__("mov    x16,            #0xf38a         \n\t"
+			"movk   x16,            #0xe417, lsl 16 \n\t"
+			"mov    v1.2d[0],       x16             \n\t"
+			:::"x16");
+
+		while ((length -= 1024) >= 0) {
+			__asm__("crc32cx %w[c0], %w[c], xzr\n\t"
+				:[c0]"=r"(crc0):[c]"r"(crc));
+
+			CRC32C7X3X8_ZERO;
+			CRC32C7X3X8_ZERO;
+			CRC32C7X3X8_ZERO;
+			CRC32C7X3X8_ZERO;
+			CRC32C7X3X8_ZERO;
+			CRC32C7X3X8_ZERO;
+
+			__asm__("mov            v3.2d[0],       %x[c0]          \n\t"
+				"pmull          v3.1q,          v3.1d,  v1.1d   \n\t"
+				"mov            %x[c0],         v3.2d[0]        \n\t"
+				"crc32cx        %w[c],          wzr,    %x[c0]  \n\t"
+				:[c]"=r"(crc)
+				:[c0]"r"(crc0));
+		}
+#endif /* HAVE_ARMV8_CRC_CRYPTO_INTRINSICS */
+
+		if(!(length += 1024))
+			return crc;
+	        }
+#endif /* HAVE_ARMV8_CRYPTO */
+		while ((length -= sizeof(uint64_t)) >= 0)
+			CRC32CX(crc, 0);
+
+		/* The following is more efficient than the straight loop */
+		if (length & sizeof(uint32_t))
+			CRC32CW(crc, 0);
+
+		if (length & sizeof(uint16_t))
+			CRC32CH(crc, 0);
+
+		if (length & sizeof(uint8_t))
+			CRC32CB(crc, 0);
+    }
+
+    return crc;
+}
+#else
 uint32_t ceph_crc32c_aarch64(uint32_t crc, unsigned char const *buffer, unsigned len)
 {
 	int64_t length = len;
@@ -270,3 +432,4 @@ uint32_t ceph_crc32c_aarch64(uint32_t crc, unsigned char const *buffer, unsigned
 	}
 	return crc;
 }
+#endif

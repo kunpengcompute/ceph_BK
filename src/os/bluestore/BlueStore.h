@@ -1963,9 +1963,9 @@ private:
   ceph::condition_variable kv_cond;
   bool _kv_only = false;
   bool kv_sync_started = false;
-  bool kv_stop = false;
+  volatile bool kv_stop = false;
   bool kv_finalize_started = false;
-  bool kv_finalize_stop = false;
+  volatile bool kv_finalize_stop = false;
   deque<TransContext*> kv_queue;             ///< ready, already submitted
   deque<TransContext*> kv_queue_unsubmitted; ///< ready, need submit by kv thread
   deque<TransContext*> kv_committing;        ///< currently syncing

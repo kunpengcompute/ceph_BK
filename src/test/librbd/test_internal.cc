@@ -655,13 +655,15 @@ TEST_F(TestInternal, SnapshotCopyup)
         state = OBJECT_EXISTS_CLEAN;
       }
 
-      librbd::ObjectMap<> object_map(*ictx2, ictx2->snap_id);
+      librbd::ObjectMap<> *object_map = new librbd::ObjectMap<>(*ictx2, ictx2->snap_id);
       C_SaferCond ctx;
-      object_map.open(&ctx);
+      object_map->open(&ctx);
       ASSERT_EQ(0, ctx.wait());
 
       RWLock::WLocker object_map_locker(ictx2->object_map_lock);
-      ASSERT_EQ(state, object_map[0]);
+
+      ASSERT_EQ(state, (*object_map)[0]);
+      object_map->put();
     }
   }
 }
@@ -743,13 +745,14 @@ TEST_F(TestInternal, SnapshotCopyupZeros)
         state = OBJECT_NONEXISTENT;
       }
 
-      librbd::ObjectMap<> object_map(*ictx2, ictx2->snap_id);
+      librbd::ObjectMap<> *object_map = new librbd::ObjectMap<>(*ictx2, ictx2->snap_id);
       C_SaferCond ctx;
-      object_map.open(&ctx);
+      object_map->open(&ctx);
       ASSERT_EQ(0, ctx.wait());
 
       RWLock::WLocker object_map_locker(ictx2->object_map_lock);
-      ASSERT_EQ(state, object_map[0]);
+      ASSERT_EQ(state, (*object_map)[0]);
+      object_map->put();
     }
   }
 }
@@ -830,13 +833,14 @@ TEST_F(TestInternal, SnapshotCopyupZerosMigration)
         state = OBJECT_NONEXISTENT;
       }
 
-      librbd::ObjectMap<> object_map(*ictx2, ictx2->snap_id);
+      librbd::ObjectMap<> *object_map = new librbd::ObjectMap<>(*ictx2, ictx2->snap_id);
       C_SaferCond ctx;
-      object_map.open(&ctx);
+      object_map->open(&ctx);
       ASSERT_EQ(0, ctx.wait());
 
       RWLock::WLocker object_map_locker(ictx2->object_map_lock);
-      ASSERT_EQ(state, object_map[0]);
+      ASSERT_EQ(state, (*object_map)[0]);
+      object_map->put();
     }
   }
 }

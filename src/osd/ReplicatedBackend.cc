@@ -500,6 +500,7 @@ void ReplicatedBackend::submit_transaction(
   vector<ObjectStore::Transaction> tls;
   tls.push_back(std::move(op_t));
 
+
   parent->queue_transactions(tls, op.op);
   if (at_version != eversion_t()) {
     parent->op_applied(at_version);
@@ -516,12 +517,14 @@ void ReplicatedBackend::op_commit(
 
   FUNCTRACE(cct);
   OID_EVENT_TRACE_WITH_MSG((op && op->op) ? op->op->get_req() : NULL, "OP_COMMIT_BEGIN", true);
-  dout(10) << __func__ << ": " << op->tid << dendl;
+#if defined(WITH_LTTNG) && defined(WITH_EVENTTRACE)
   if (op->op) {
     op->op->mark_event("op_commit");
     op->op->pg_trace.event("op commit");
   }
+#endif
 
+  dout(10) << __func__ << ": " << op->tid << dendl;
   op->waiting_for_commit.erase(get_parent()->whoami_shard());
 
   if (op->waiting_for_commit.empty()) {
@@ -566,10 +569,13 @@ void ReplicatedBackend::do_repop_reply(OpRequestRef op)
     if (r->ack_type & CEPH_OSD_FLAG_ONDISK) {
       ceph_assert(ip_op.waiting_for_commit.count(from));
       ip_op.waiting_for_commit.erase(from);
+
+#if defined(WITH_LTTNG) && defined(WITH_EVENTTRACE)
       if (ip_op.op) {
 	ip_op.op->mark_event("sub_op_commit_rec");
 	ip_op.op->pg_trace.event("sub_op_commit_rec");
       }
+#endif
     } else {
       // legacy peer; ignore
     }
@@ -955,6 +961,7 @@ void ReplicatedBackend::issue_op(
   ObjectStore::Transaction &op_t)
 {
   if (parent->get_acting_recovery_backfill_shards().size() > 1) {
+#if defined(WITH_LTTNG) && defined(WITH_EVENTTRACE)
     if (op->op) {
       op->op->pg_trace.event("issue replication ops");
       ostringstream ss;
@@ -963,6 +970,7 @@ void ReplicatedBackend::issue_op(
       ss << "waiting for subops from " << replicas;
       op->op->mark_sub_op_sent(ss.str());
     }
+#endif
 
     // avoid doing the same work in generate_subop
     bufferlist logs;
@@ -987,8 +995,11 @@ void ReplicatedBackend::issue_op(
 	  op_t,
 	  shard,
 	  pinfo);
+#if defined(WITH_LTTNG) && defined(WITH_EVENTTRACE)
       if (op->op && op->op->pg_trace)
 	wr->trace.init("replicated op", nullptr, &op->op->pg_trace);
+#endif
+
       get_parent()->send_message_osd_cluster(
 	  shard.osd, wr, get_osdmap_epoch());
     }
@@ -1098,8 +1109,10 @@ void ReplicatedBackend::do_repop(OpRequestRef op)
 
 void ReplicatedBackend::repop_commit(RepModifyRef rm)
 {
+#if defined(WITH_LTTNG) && defined(WITH_EVENTTRACE)
   rm->op->mark_commit_sent();
   rm->op->pg_trace.event("sup_op_commit");
+#endif
   rm->committed = true;
 
   // send commit.
@@ -1118,7 +1131,9 @@ void ReplicatedBackend::repop_commit(RepModifyRef rm)
     0, get_osdmap_epoch(), m->get_min_epoch(), CEPH_OSD_FLAG_ONDISK);
   reply->set_last_complete_ondisk(rm->last_complete);
   reply->set_priority(CEPH_MSG_PRIO_HIGH); // this better match ack priority!
+#if defined(WITH_LTTNG) && defined(WITH_EVENTTRACE)
   reply->trace = rm->op->pg_trace;
+#endif
   get_parent()->send_message_osd_cluster(
     rm->ackerosd, reply, get_osdmap_epoch());
 

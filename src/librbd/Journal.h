@@ -8,9 +8,11 @@
 #include "include/Context.h"
 #include "include/interval_set.h"
 #include "include/rados/librados_fwd.hpp"
+#include "common/AsyncOpTracker.h"
 #include "common/Cond.h"
 #include "common/Mutex.h"
 #include "common/Cond.h"
+#include "common/RefCountedObj.h"
 #include "common/WorkQueue.h"
 #include "journal/Future.h"
 #include "journal/JournalMetadataListener.h"
@@ -38,7 +40,7 @@ class ImageCtx;
 namespace journal { template <typename> class Replay; }
 
 template <typename ImageCtxT = ImageCtx>
-class Journal {
+class Journal : public RefCountedObject {
 public:
   /**
    * @verbatim
@@ -303,7 +305,7 @@ private:
 
   journal::Replay<ImageCtxT> *m_journal_replay;
 
-  util::AsyncOpTracker m_async_journal_op_tracker;
+  AsyncOpTracker m_async_journal_op_tracker;
 
   struct MetadataListener : public ::journal::JournalMetadataListener {
     Journal<ImageCtxT> *journal;

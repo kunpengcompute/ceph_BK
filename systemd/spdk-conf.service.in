@@ -1,0 +1,9 @@
+[Unit]
+Description=Spdk environment variable configuration
+PartOf=spdk-conf.target
+ 
+[Service]
+ExecStart=/usr/lib/ceph/ceph-osd-spdk.sh start
+ 
+[Install]
+WantedBy=spdk-conf.target

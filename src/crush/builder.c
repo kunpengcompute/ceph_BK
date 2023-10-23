@@ -6,6 +6,7 @@
 #include <errno.h>
 
 #include "crush/crush.h"
+#include "crush_ln_table.h"
 #include "builder.h"
 
 #define dprintk(args...) /* printf(args) */
@@ -1522,4 +1523,5 @@ void set_optimal_crush_map(struct crush_map *map) {
     (1 << CRUSH_BUCKET_LIST) |
     (1 << CRUSH_BUCKET_STRAW) |
     (1 << CRUSH_BUCKET_STRAW2));
+  crush_init_lntable();
 }

@@ -1055,7 +1055,7 @@ Context *RefreshRequest<I>::handle_v2_open_object_map(int *result) {
   if (*result < 0) {
     lderr(cct) << "failed to open object map: " << cpp_strerror(*result)
                << dendl;
-    delete m_object_map;
+    m_object_map->put();
     m_object_map = nullptr;
 
     if (*result != -EFBIG) {
@@ -1152,7 +1152,7 @@ Context *RefreshRequest<I>::handle_v2_shut_down_exclusive_lock(int *result) {
   }
 
   ceph_assert(m_exclusive_lock != nullptr);
-  delete m_exclusive_lock;
+  m_exclusive_lock->put();
   m_exclusive_lock = nullptr;
 
   return send_v2_close_journal();
@@ -1187,7 +1187,7 @@ Context *RefreshRequest<I>::handle_v2_close_journal(int *result) {
   }
 
   ceph_assert(m_journal != nullptr);
-  delete m_journal;
+  m_journal->put();
   m_journal = nullptr;
 
   ceph_assert(m_blocked_writes);
@@ -1225,7 +1225,7 @@ Context *RefreshRequest<I>::handle_v2_close_object_map(int *result) {
   }
 
   ceph_assert(m_object_map != nullptr);
-  delete m_object_map;
+  m_object_map->put();
   m_object_map = nullptr;
 
   return send_flush_aio();

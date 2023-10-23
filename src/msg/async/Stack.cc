@@ -48,16 +48,23 @@ std::function<void ()> NetworkStack::add_thread(unsigned i)
       w->init_done();
       while (!w->done) {
         ldout(cct, 30) << __func__ << " calling event process" << dendl;
-
-        ceph::timespan dur;
-        int r = w->center.process_events(EventMaxWaitUs, &dur);
-        if (r < 0) {
-          ldout(cct, 20) << __func__ << " process events failed: "
-                         << cpp_strerror(errno) << dendl;
-          // TODO do something?
+        if (!(w->center.driver->need_wakeup())) {
+            int r = w->center.process_events(EventMaxWaitUs, nullptr);
+            if (r < 0) {
+              ldout(cct, 20) << __func__ << " process events failed: "
+                             << cpp_strerror(errno) << dendl;
+            }
+        } else {
+            ceph::timespan dur;
+            int r = w->center.process_events(EventMaxWaitUs, &dur);
+            if (r < 0) {
+              ldout(cct, 20) << __func__ << " process events failed: "
+                             << cpp_strerror(errno) << dendl;
+            }
+            w->perf_logger->tinc(l_msgr_running_total_time, dur);
         }
-        w->perf_logger->tinc(l_msgr_running_total_time, dur);
       }
+
       w->reset();
       w->destroy();
   };

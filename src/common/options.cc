@@ -1139,6 +1139,14 @@ std::vector<Option> get_global_options() {
     .set_description("Maximum threadpool size of AsyncMessenger")
     .add_see_also("ms_async_op_threads"),
 
+    Option("ms_async_op_threads_polling", Option::TYPE_BOOL, Option::LEVEL_ADVANCED)
+    .set_default(false)
+    .set_description("Threadpool polling switch for AsyncMessenger (ms_type=async)"),
+
+    Option("ms_async_op_threads_adaptive_polling", Option::TYPE_BOOL, Option::LEVEL_ADVANCED)
+    .set_default(false)
+    .set_description("Threadpool polling model for AsyncMessenger (ms_type=async)"),
+
     Option("ms_async_rdma_device_name", Option::TYPE_STR, Option::LEVEL_ADVANCED)
     .set_default("")
     .set_description(""),
@@ -4256,6 +4264,13 @@ std::vector<Option> get_global_options() {
 
     // --------------------------
     // bluestore
+    Option("bluestore_kv_sync_thread_polling", Option::TYPE_BOOL, Option::LEVEL_ADVANCED)
+    .set_default(false)
+    .set_description("kv_sync_thread polling switch"),
+
+    Option("bluestore_kv_finalize_thread_polling", Option::TYPE_BOOL, Option::LEVEL_ADVANCED)
+    .set_default(false)
+    .set_description("kv_finalize_thread polling switch"),
 
     Option("bdev_debug_inflight_ios", Option::TYPE_BOOL, Option::LEVEL_DEV)
     .set_default(false)

@@ -22,6 +22,10 @@
 
 #undef dout_prefix
 #define dout_prefix *_dout << "EpollDriver."
+#define POLLING_TIMES_WINDOW 100000
+#define STOP_SLEEP_TRIGGER 500
+#define CONTINUE_SLEEP_TRIGGER 1
+#define SINGLE_POLLING_TIME_US 180000000
 
 int EpollDriver::init(EventCenter *c, int nevent)
 {
@@ -118,25 +122,81 @@ int EpollDriver::resize_events(int newsize)
 int EpollDriver::event_wait(vector<FiredFileEvent> &fired_events, struct timeval *tvp)
 {
   int retval, numevents = 0;
+  bool adaptive_epoll = (is_polling && adaptive_polling);
+  if (adaptive_epoll) {
+      static auto working_start = ceph::mono_clock::now();
+      static bool need_sleep = true;
+      static int epoll_num = 0;
+      static int valid_num = 0;
+      retval = epoll_wait(epfd, events, size, 0);
+      if (retval > 0) {
+        valid_num++;
+        int j;
 
-  retval = epoll_wait(epfd, events, size,
-                      tvp ? (tvp->tv_sec*1000 + tvp->tv_usec/1000) : -1);
-  if (retval > 0) {
-    int j;
+        numevents = retval;
+        fired_events.resize(numevents);
+        for (j = 0; j < numevents; j++) {
+          int mask = 0;
+          struct epoll_event *e = events + j;
 
-    numevents = retval;
-    fired_events.resize(numevents);
-    for (j = 0; j < numevents; j++) {
-      int mask = 0;
-      struct epoll_event *e = events + j;
+          if (e->events & EPOLLIN) mask |= EVENT_READABLE;
+          if (e->events & EPOLLOUT) mask |= EVENT_WRITABLE;
+          if (e->events & EPOLLERR) mask |= EVENT_READABLE|EVENT_WRITABLE;
+          if (e->events & EPOLLHUP) mask |= EVENT_READABLE|EVENT_WRITABLE;
+          fired_events[j].fd = e->data.fd;
+          fired_events[j].mask = mask;
+        }
+      }
 
-      if (e->events & EPOLLIN) mask |= EVENT_READABLE;
-      if (e->events & EPOLLOUT) mask |= EVENT_WRITABLE;
-      if (e->events & EPOLLERR) mask |= EVENT_READABLE|EVENT_WRITABLE;
-      if (e->events & EPOLLHUP) mask |= EVENT_READABLE|EVENT_WRITABLE;
-      fired_events[j].fd = e->data.fd;
-      fired_events[j].mask = mask;
+      epoll_num++;
+      if (epoll_num >= POLLING_TIMES_WINDOW) {
+        ldout(cct, 30) << __func__ << " epoll_num=" << epoll_num << " valid_num=" << valid_num << dendl;
+        if (valid_num >= STOP_SLEEP_TRIGGER && need_sleep) {
+          // start polling socket_fd registered by epoll_ctl for a continuous period
+          ldout(cct, 30) << __func__ << " stop sleep for 80s, epoll_num=" << epoll_num <<
+            " valid_num=" << valid_num << dendl;
+          working_start = ceph::mono_clock::now();
+          need_sleep = false;
+        }
+
+        if (ceph::mono_clock::now() - working_start >= (std::chrono::microseconds)(SINGLE_POLLING_TIME_US)) {
+          working_start = ceph::mono_clock::now();
+          if (valid_num <= CONTINUE_SLEEP_TRIGGER) {
+              ldout(cct, 30) << __func__ << " start sleep "<< dendl;
+              need_sleep = true;
+          }
+        }
+
+        // refresh for new time period
+        epoll_num = 0;
+        valid_num = 0;
+      }
+
+      if (need_sleep) {
+        usleep(1);
+      }
+  } else {
+      retval = epoll_wait(epfd, events, size,
+                          tvp ? (tvp->tv_sec*1000 + tvp->tv_usec/1000) : -1);
+    if (retval > 0) {
+      int j;
+  
+      numevents = retval;
+      fired_events.resize(numevents);
+      for (j = 0; j < numevents; j++) {
+        int mask = 0;
+        struct epoll_event *e = events + j;
+  
+        if (e->events & EPOLLIN) mask |= EVENT_READABLE;
+        if (e->events & EPOLLOUT) mask |= EVENT_WRITABLE;
+        if (e->events & EPOLLERR) mask |= EVENT_READABLE|EVENT_WRITABLE;
+        if (e->events & EPOLLHUP) mask |= EVENT_READABLE|EVENT_WRITABLE;
+        fired_events[j].fd = e->data.fd;
+        fired_events[j].mask = mask;
+      }
     }
+
   }
+
   return numevents;
 }

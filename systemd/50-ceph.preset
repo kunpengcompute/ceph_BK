@@ -1,4 +1,6 @@
 enable ceph.target
+disable spdk-conf.target
+disable spdk-conf.service
 enable ceph-mds.target
 enable ceph-mgr.target
 enable ceph-mon.target
