@@ -3876,6 +3876,7 @@ void RGWPutObj::execute()
     RGWCompressionInfo cs_info;
     cs_info.compression_type = plugin->get_type_name();
     cs_info.orig_size = s->obj_size;
+    cs_info.compressor_message = compressor->get_compressor_message();
     cs_info.blocks = move(compressor->get_compression_blocks());
     encode(cs_info, tmp);
     attrs[RGW_ATTR_COMPRESSION] = tmp;
@@ -4188,6 +4189,7 @@ void RGWPostObj::execute()
       RGWCompressionInfo cs_info;
       cs_info.compression_type = plugin->get_type_name();
       cs_info.orig_size = s->obj_size;
+      cs_info.compressor_message = compressor->get_compressor_message();
       cs_info.blocks = move(compressor->get_compression_blocks());
       encode(cs_info, tmp);
       emplace_attr(RGW_ATTR_COMPRESSION, std::move(tmp));
@@ -5969,6 +5971,7 @@ void RGWCompleteMultipart::execute()
         if (!compressed)
           cs_info.compression_type = obj_part.cs_info.compression_type;
         cs_info.orig_size += obj_part.cs_info.orig_size;
+        cs_info.compressor_message = obj_part.cs_info.compressor_message;
         compressed = true;
       }
 
@@ -7061,6 +7064,7 @@ int RGWBulkUploadOp::handle_file(const boost::string_ref path,
     RGWCompressionInfo cs_info;
     cs_info.compression_type = plugin->get_type_name();
     cs_info.orig_size = s->obj_size;
+    cs_info.compressor_message = compressor->get_compressor_message();
     cs_info.blocks = std::move(compressor->get_compression_blocks());
     encode(cs_info, tmp);
     attrs.emplace(RGW_ATTR_COMPRESSION, std::move(tmp));

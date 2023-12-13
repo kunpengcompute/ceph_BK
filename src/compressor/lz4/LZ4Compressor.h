@@ -35,7 +35,7 @@ class LZ4Compressor : public Compressor {
 #endif
   }
 
-  int compress(const bufferlist &src, bufferlist &dst) override {
+  int compress(const bufferlist &src, bufferlist &dst, boost::optional<int32_t> &compressor_message) override {
 #ifdef HAVE_QATZIP
     if (qat_enabled)
       return qat_accel.compress(src, dst);
@@ -69,21 +69,22 @@ class LZ4Compressor : public Compressor {
     return 0;
   }
 
-  int decompress(const bufferlist &src, bufferlist &dst) override {
+  int decompress(const bufferlist &src, bufferlist &dst, boost::optional<int32_t> compressor_message) override {
 #ifdef HAVE_QATZIP
     if (qat_enabled)
-      return qat_accel.decompress(src, dst);
+      return qat_accel.decompress(src, dst, compressor_message);
 #endif
     auto i = std::cbegin(src);
-    return decompress(i, src.length(), dst);
+    return decompress(i, src.length(), dst, compressor_message);
   }
 
   int decompress(bufferlist::const_iterator &p,
 		 size_t compressed_len,
-		 bufferlist &dst) override {
+		 bufferlist &dst,
+		 boost::optional<int32_t> compressor_message) override {
 #ifdef HAVE_QATZIP
     if (qat_enabled)
-      return qat_accel.decompress(p, compressed_len, dst);
+      return qat_accel.decompress(p, compressed_len, dst, compressor_message);
 #endif
     uint32_t count;
     std::vector<std::pair<uint32_t, uint32_t> > compressed_pairs;

@@ -9,6 +9,7 @@
 #include "common/Timer.h"
 #include "common/safe_io.h"
 #include "common/TracepointProvider.h"
+#include "common/openssl_opts_handler.h"
 #include "include/compat.h"
 #include "include/str_list.h"
 #include "include/stringify.h"
@@ -282,6 +283,8 @@ int main(int argc, const char **argv)
   mutex.Lock();
   init_timer.add_event_after(g_conf()->rgw_init_timeout, new C_InitTimeout);
   mutex.Unlock();
+
+  ceph::crypto::init_openssl_engine_once();
 
   common_init_finish(g_ceph_context);
 

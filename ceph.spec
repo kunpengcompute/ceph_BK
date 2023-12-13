@@ -1173,6 +1173,7 @@ ${CMAKE} .. \
     -DWITH_MANPAGE=ON \
     -DWITH_PYTHON3=%{python3_version} \
     -DWITH_MGR_DASHBOARD_FRONTEND=OFF \
+    -DWITH_SHARED_ZSTD=ON \
 %if %{with python2}
     -DWITH_PYTHON2=ON \
 %else
