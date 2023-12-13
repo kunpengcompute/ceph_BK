@@ -30,6 +30,8 @@
 class CephContext;
 
 class UserspaceEventManager {
+  std::list<uint32_t> unused_fds;
+protected:
   struct UserspaceFDImpl {
     uint32_t waiting_idx = 0;
     int16_t read_errno = 0;
@@ -37,13 +39,12 @@ class UserspaceEventManager {
     int8_t listening_mask = 0;
     int8_t activating_mask = 0;
     uint32_t magic = 4921;
-  };
-  CephContext *cct;
-  int max_fd = 0;
+  }; 
+   CephContext *cct;
+    int max_fd = 0;
   uint32_t max_wait_idx = 0;
   std::vector<Tub<UserspaceFDImpl> > fds;
   std::vector<int> waiting_fds;
-  std::list<uint32_t> unused_fds;
 
  public:
   explicit UserspaceEventManager(CephContext *c): cct(c) {

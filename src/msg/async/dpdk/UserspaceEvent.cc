@@ -110,6 +110,8 @@ int UserspaceEventManager::poll(int *events, int *masks, int num_events, struct 
 
     events[count] = fd;
     Tub<UserspaceFDImpl> &impl = fds[fd];
+    if (impl->waiting_idx == 0)
+      continue;
     ceph_assert(impl);
     masks[count] = impl->listening_mask & impl->activating_mask;
     ceph_assert(masks[count]);

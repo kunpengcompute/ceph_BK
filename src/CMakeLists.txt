@@ -216,6 +216,15 @@ if(WITH_CEPHFS_JAVA)
   add_subdirectory(java)
 endif()
 
+if(HAVE_UCX)
+    if (UCX_DEBUG_FLAGS)
+          set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -I${UCX_INCLUDE_DIR} -g -O0")
+          message(STATUS " adding UCX debugging flags...")
+    else ()
+          set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -I${UCX_INCLUDE_DIR}")
+          message(STATUS " adding UCX compilation flags...")
+    endif()
+endif(HAVE_UCX)
 # Python stuff
 option(WITH_PYTHON2 "build python2 bindings" ON)
 if(WITH_PYTHON2)
@@ -387,6 +396,10 @@ endif()
 
 if(HAVE_QATZIP)
   list(APPEND ceph_common_deps ${QATZIP_LIBRARIES})
+endif()
+
+if(HAVE_UCX)
+  list(APPEND ceph_common_deps ${UCX_LIBS})
 endif()
 
 if(WITH_DPDK)

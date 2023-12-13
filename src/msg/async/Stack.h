@@ -28,12 +28,16 @@ class ConnectedSocketImpl {
   virtual ~ConnectedSocketImpl() {}
   virtual int is_connected() = 0;
   virtual ssize_t read(char*, size_t) = 0;
-  virtual ssize_t zero_copy_read(bufferptr&) = 0;
+  virtual ssize_t zero_copy_read(ceph::buffer::list &bl, size_t len) = 0;
   virtual ssize_t send(bufferlist &bl, bool more) = 0;
   virtual void shutdown() = 0;
   virtual void close() = 0;
   virtual int fd() const = 0;
   virtual int socket_fd() const = 0;
+  virtual int getsockname(int sockfd, struct sockaddr * addr, socklen_t * addrlen) {
+	  return ::getsockname(sockfd, addr, addrlen);
+  }
+
 };
 
 class ConnectedSocket;
@@ -98,8 +102,8 @@ class ConnectedSocket {
   /// Gets the input stream.
   ///
   /// Gets an object returning data sent from the remote endpoint.
-  ssize_t zero_copy_read(bufferptr &data) {
-    return _csi->zero_copy_read(data);
+  ssize_t zero_copy_read(ceph::buffer::list &bl, size_t len) {
+    return _csi->zero_copy_read(bl, len);
   }
   /// Gets the output stream.
   ///
@@ -132,6 +136,11 @@ class ConnectedSocket {
   }
   int socket_fd() const {
     return _csi->socket_fd();
+  }
+
+  int getsockname(int sockfd, struct sockaddr *addr,
+                  socklen_t * addrlen) {
+      return _csi->getsockname(sockfd, addr, addrlen);
   }
 
   explicit operator bool() const {

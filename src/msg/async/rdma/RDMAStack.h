@@ -216,7 +216,7 @@ class RDMAConnectedSocketImpl : public ConnectedSocketImpl {
   virtual int is_connected() override { return connected; }
 
   virtual ssize_t read(char* buf, size_t len) override;
-  virtual ssize_t zero_copy_read(bufferptr &data) override;
+  virtual ssize_t zero_copy_read(ceph::buffer::list &bl, size_t len) override;
   virtual ssize_t send(bufferlist &bl, bool more) override;
   virtual void shutdown() override;
   virtual void close() override;

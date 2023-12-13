@@ -1384,7 +1384,7 @@ CtPtr ProtocolV1::handle_server_banner_and_identify(char *buffer, int r) {
       messenger->get_myaddrs().front().is_blank_ip()) {
     sockaddr_storage ss;
     socklen_t len = sizeof(ss);
-    getsockname(connection->cs.fd(), (sockaddr *)&ss, &len);
+    connection->cs.getsockname(connection->cs.fd(), (sockaddr *)&ss, &len);
     entity_addr_t a;
     if (cct->_conf->ms_learn_addr_from_peer) {
       ldout(cct, 1) << __func__ << " peer " << connection->target_addr

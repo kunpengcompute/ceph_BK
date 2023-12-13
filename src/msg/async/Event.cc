@@ -22,6 +22,10 @@
 #include "dpdk/EventDPDK.h"
 #endif
 
+#ifdef HAVE_UCX
+#include "ucx/UCXEvent.h"
+#endif
+
 #ifdef HAVE_EPOLL
 #include "EventEpoll.h"
 #else
@@ -111,6 +115,13 @@ int EventCenter::init(int n, unsigned i, const std::string &t)
   if (t == "dpdk") {
 #ifdef HAVE_DPDK
     driver = new DPDKDriver(cct);
+#endif
+  } else if (type == "ucx") {
+#ifdef HAVE_UCX
+    ldout(cct, 20) << __func__ << " UCX driver is going to be used" << dendl;
+    driver = new UCXEventDriver(cct);
+#else
+    lderr(cct) << __func__ << " failed to create UCX event driver" << dendl;
 #endif
   } else {
 #ifdef HAVE_EPOLL

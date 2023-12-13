@@ -208,6 +208,16 @@ if(WITH_RDMA)
   set(HAVE_RDMA TRUE)
 endif()
 
+option(WITH_UCX "Enable UCX async messenger" OFF)
+if(WITH_UCX)
+#    message(FATAL_ERROR "With UCX is ${WITH_UCX}")
+  find_package(UCX REQUIRED)
+  set(HAVE_UCX ${UCX_FOUND})
+  message(STATUS "UCX_LIBS: ${UCX_LIBS}")
+else()
+    message(STATUS "UCX support is disabled")
+endif(WITH_UCX)
+
 find_package(Backtrace)
 
 # remote block storage

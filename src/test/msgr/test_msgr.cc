@@ -2278,7 +2278,13 @@ INSTANTIATE_TEST_CASE_P(
   MessengerTest,
   ::testing::Values(
     "async+posix",
-    "simple"
+    "simple",
+#ifdef HAVE_RDMA
+    "async+rdma",
+#endif
+#ifdef HAVE_UCX
+    "async+ucx"
+#endif
   )
 );
 

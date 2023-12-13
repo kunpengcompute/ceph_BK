@@ -114,13 +114,22 @@ private:
 
   bool keepalive;
   bool write_in_progress = false;
+  bool use_zero_copy;
+  // stat counters
+  enum {
+    l_msgr_protocalv2_first = 98000,
+    l_msgr_protocalv2_zerocopy,
+    l_msgr_protocalv2_copy,
+    l_msgr_protocalv2_last,
+  };
 
   ostream &_conn_prefix(std::ostream *_dout);
   void run_continuation(Ct<ProtocolV2> *pcontinuation);
   void run_continuation(Ct<ProtocolV2> &continuation);
 
   Ct<ProtocolV2> *read(CONTINUATION_RXBPTR_TYPE<ProtocolV2> &next,
-                       rx_buffer_t&& buffer);
+                       buffer::ptr &&ptr);
+  Ct<ProtocolV2> *zero_copy_read(CONTINUATION_RXBPTR_TYPE<ProtocolV2> &next, size_t length);
   template <class F>
   Ct<ProtocolV2> *write(const std::string &desc,
                         CONTINUATION_TYPE<ProtocolV2> &next,
