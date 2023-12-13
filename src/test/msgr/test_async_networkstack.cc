@@ -72,20 +72,17 @@ class NetworkWorkerTest : public ::testing::TestWithParam<const char*> {
   NetworkWorkerTest() {}
   void SetUp() override {
     cerr << __func__ << " start set up " << GetParam() << std::endl;
-    if (strncmp(GetParam(), "dpdk", 4)) {
+    if (strncmp(GetParam(), "ucx", 3)) {
       g_ceph_context->_conf.set_val("ms_type", "async+posix");
       addr = "127.0.0.1:15000";
       port_addr = "127.0.0.1:15001";
     } else {
-      g_ceph_context->_conf.set_val_or_die("ms_type", "async+dpdk");
-      g_ceph_context->_conf.set_val_or_die("ms_dpdk_debug_allow_loopback", "true");
+      g_ceph_context->_conf.set_val_or_die("ms_type", "async+ucx");
       g_ceph_context->_conf.set_val_or_die("ms_async_op_threads", "2");
-      g_ceph_context->_conf.set_val_or_die("ms_dpdk_coremask", "0x7");
-      g_ceph_context->_conf.set_val_or_die("ms_dpdk_host_ipv4_addr", "172.16.218.3");
-      g_ceph_context->_conf.set_val_or_die("ms_dpdk_gateway_ipv4_addr", "172.16.218.2");
-      g_ceph_context->_conf.set_val_or_die("ms_dpdk_netmask_ipv4_addr", "255.255.255.0");
-      addr = "172.16.218.3:15000";
-      port_addr = "172.16.218.3:15001";
+      g_ceph_context->_conf.set_val_or_die("ms_async_ucx_device", "mlx5_0:1");
+      g_ceph_context->_conf.set_val_or_die("ms_async_ucx_tls", "rc_mlx5");
+      addr = "192.168.37.197:15000";
+      port_addr = "192.168.37.197:15001";
     }
     stack = NetworkStack::create(g_ceph_context, GetParam());
     stack->start();
@@ -855,8 +852,10 @@ class StressFactory {
       while (true) {
         char buf[4096];
         bufferptr data;
+	bufferlist bl;
+	bl.reserve(4096);
         if (factory->zero_copy_read) {
-          r = socket.zero_copy_read(data);
+          r = socket.zero_copy_read(bl, 4096);
         } else {
           r = socket.read(buf, sizeof(buf));
         }
@@ -1073,6 +1072,7 @@ INSTANTIATE_TEST_CASE_P(
 #ifdef HAVE_DPDK
     "dpdk",
 #endif
+    "ucx",
     "posix"
   )
 );

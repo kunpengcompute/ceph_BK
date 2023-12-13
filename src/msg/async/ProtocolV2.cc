@@ -57,7 +57,7 @@ void ProtocolV2::run_continuation(CtRef continuation) {
 
 #define WRITE(B, D, C) write(D, CONTINUATION(C), B)
 
-#define READ(L, C) read(CONTINUATION(C), buffer::ptr_node::create(buffer::create(L)))
+#define READ(L, C) read(CONTINUATION(C), std::move(buffer::ptr(L)))
 
 #define READ_RXBUF(B, C) read(CONTINUATION(C), B)
 
@@ -94,6 +94,9 @@ ProtocolV2::ProtocolV2(AsyncConnection *connection)
       bannerExchangeCallback(nullptr),
       next_tag(static_cast<Tag>(0)),
       keepalive(false) {
+        if (cct->_conf.get_val<bool>("ms_async_ucx_zerocopy"))
+          use_zero_copy = messenger->get_stack()->support_zero_copy_read();
+        else use_zero_copy = false;  
 }
 
 ProtocolV2::~ProtocolV2() {
@@ -704,14 +707,16 @@ uint32_t ProtocolV2::get_epilogue_size() const {
 }
 
 CtPtr ProtocolV2::read(CONTINUATION_RXBPTR_TYPE<ProtocolV2> &next,
-                       rx_buffer_t &&buffer) {
-  const auto len = buffer->length();
-  const auto buf = buffer->c_str();
+                       buffer::ptr &&ptr) {
+  rx_buffer_t buffer;
+  buffer.append(ptr);
+  const auto len = buffer.length();
+  const auto buf = buffer.c_str();
   next.node = std::move(buffer);
   ssize_t r = connection->read(len, buf,
     [&next, this](char *buffer, int r) {
       if (unlikely(pre_auth.enabled) && r >= 0) {
-        pre_auth.rxbuf.append(*next.node);
+        pre_auth.rxbuf.append(next.node);
 	ceph_assert(!cct->_conf->ms_die_on_bug ||
 		    pre_auth.rxbuf.length() < 1000000);
       }
@@ -721,7 +726,7 @@ CtPtr ProtocolV2::read(CONTINUATION_RXBPTR_TYPE<ProtocolV2> &next,
   if (r <= 0) {
     // error or done synchronously
     if (unlikely(pre_auth.enabled) && r >= 0) {
-      pre_auth.rxbuf.append(*next.node);
+      pre_auth.rxbuf.append(next.node);
       ceph_assert(!cct->_conf->ms_die_on_bug ||
 		  pre_auth.rxbuf.length() < 1000000);
     }
@@ -731,6 +736,36 @@ CtPtr ProtocolV2::read(CONTINUATION_RXBPTR_TYPE<ProtocolV2> &next,
 
   return nullptr;
 }
+
+CtPtr ProtocolV2::zero_copy_read(CONTINUATION_RXBPTR_TYPE<ProtocolV2> &next, size_t length) { 
+  rx_buffer_t bl;                        
+  ssize_t r = connection->zero_copy_read(bl, length,
+    [&next, this](ceph::bufferlist &bl, int r) {
+      if (unlikely(pre_auth.enabled) && r >= 0) {
+        pre_auth.rxbuf.append(bl);
+	ceph_assert(!cct->_conf->ms_die_on_bug ||
+		    pre_auth.rxbuf.length() < 20000000);
+      }
+           
+      next.node = std::move(bl);
+      next.r = r;
+      run_continuation(next);
+    });
+  if (r <= 0) {
+    // error or done synchronously
+    if (unlikely(pre_auth.enabled) && r == 0) {
+      pre_auth.rxbuf.append(bl);
+      ceph_assert(!cct->_conf->ms_die_on_bug ||
+		  pre_auth.rxbuf.length() < 20000000);
+    }
+
+    next.node = std::move(bl);
+    next.r = r;
+    return &next;
+  }
+
+  return nullptr;
+} 
 
 template <class F>
 CtPtr ProtocolV2::write(const std::string &desc,
@@ -792,7 +827,11 @@ CtPtr ProtocolV2::_banner_exchange(CtRef callback) {
 
 CtPtr ProtocolV2::_wait_for_peer_banner() {
   unsigned banner_len = strlen(CEPH_BANNER_V2_PREFIX) + sizeof(__le16);
-  return READ(banner_len, _handle_peer_banner);
+  if (!use_zero_copy) {
+    return READ(banner_len, _handle_peer_banner); 
+  } else { 
+    return  zero_copy_read(CONTINUATION(_handle_peer_banner), banner_len);      
+  }
 }
 
 CtPtr ProtocolV2::_handle_peer_banner(rx_buffer_t &&buffer, int r) {
@@ -806,8 +845,8 @@ CtPtr ProtocolV2::_handle_peer_banner(rx_buffer_t &&buffer, int r) {
 
   unsigned banner_prefix_len = strlen(CEPH_BANNER_V2_PREFIX);
 
-  if (memcmp(buffer->c_str(), CEPH_BANNER_V2_PREFIX, banner_prefix_len)) {
-    if (memcmp(buffer->c_str(), CEPH_BANNER, strlen(CEPH_BANNER)) == 0) {
+  if (memcmp(buffer.c_str(), CEPH_BANNER_V2_PREFIX, banner_prefix_len)) {
+    if (memcmp(buffer.c_str(), CEPH_BANNER, strlen(CEPH_BANNER)) == 0) {
       lderr(cct) << __func__ << " peer " << *connection->peer_addrs
                  << " is using msgr V1 protocol" << dendl;
       return _fault();
@@ -818,9 +857,7 @@ CtPtr ProtocolV2::_handle_peer_banner(rx_buffer_t &&buffer, int r) {
 
   uint16_t payload_len;
   bufferlist bl;
-  buffer->set_offset(banner_prefix_len);
-  buffer->set_length(sizeof(__le16));
-  bl.push_back(std::move(buffer));
+  buffer.splice(banner_prefix_len, sizeof(__le16), &bl);
   auto ti = bl.cbegin();
   try {
     decode(payload_len, ti);
@@ -830,8 +867,11 @@ CtPtr ProtocolV2::_handle_peer_banner(rx_buffer_t &&buffer, int r) {
   }
 
   INTERCEPT(state == BANNER_CONNECTING ? 5 : 6);
-
+if (!use_zero_copy) {
   return READ(payload_len, _handle_peer_banner_payload);
+} else {
+    return  zero_copy_read(CONTINUATION(_handle_peer_banner_payload), payload_len); 
+}
 }
 
 CtPtr ProtocolV2::_handle_peer_banner_payload(rx_buffer_t &&buffer, int r) {
@@ -847,7 +887,7 @@ CtPtr ProtocolV2::_handle_peer_banner_payload(rx_buffer_t &&buffer, int r) {
   uint64_t peer_required_features;
 
   bufferlist bl;
-  bl.push_back(std::move(buffer));
+  bl.swap(buffer);
   auto ti = bl.cbegin();
   try {
     decode(peer_supported_features, ti);
@@ -926,7 +966,7 @@ CtPtr ProtocolV2::handle_hello(ceph::bufferlist &payload)
 
   sockaddr_storage ss;
   socklen_t len = sizeof(ss);
-  getsockname(connection->cs.fd(), (sockaddr *)&ss, &len);
+  connection->cs.getsockname(connection->cs.fd(), (sockaddr *)&ss, &len);
   ldout(cct, 5) << __func__ << " getsockname says I am " << (sockaddr *)&ss
 		<< " when talking to " << connection->target_addr << dendl;
 
@@ -1006,7 +1046,12 @@ CtPtr ProtocolV2::read_frame() {
   }
 
   ldout(cct, 20) << __func__ << dendl;
-  return READ(FRAME_PREAMBLE_SIZE, handle_read_frame_preamble_main);
+ if (!use_zero_copy) {
+    return READ(FRAME_PREAMBLE_SIZE,
+              handle_read_frame_preamble_main);
+ } else {
+  return  zero_copy_read(CONTINUATION(handle_read_frame_preamble_main), FRAME_PREAMBLE_SIZE);
+ }
 }
 
 CtPtr ProtocolV2::handle_read_frame_preamble_main(rx_buffer_t &&buffer, int r) {
@@ -1019,7 +1064,7 @@ CtPtr ProtocolV2::handle_read_frame_preamble_main(rx_buffer_t &&buffer, int r) {
   }
 
   ceph::bufferlist preamble;
-  preamble.push_back(std::move(buffer));
+  preamble.append(std::move(buffer));
 
   ldout(cct, 30) << __func__ << " preamble\n";
   preamble.hexdump(*_dout);
@@ -1143,10 +1188,12 @@ CtPtr ProtocolV2::read_frame_segment() {
 
   // description of current segment to read
   const auto& cur_rx_desc = rx_segments_desc.at(rx_segments_data.size());
-  rx_buffer_t rx_buffer;
+  uint32_t onwire_len = get_onwire_size(cur_rx_desc.length);
+  if (!use_zero_copy) {
+    ceph::unique_leakable_ptr<buffer::raw> raw_buf;
   try {
-    rx_buffer = buffer::ptr_node::create(buffer::create_aligned(
-      get_onwire_size(cur_rx_desc.length), cur_rx_desc.alignment));
+    raw_buf = buffer::create_aligned(
+      onwire_len, cur_rx_desc.alignment);
   } catch (std::bad_alloc&) {
     // Catching because of potential issues with satisfying alignment.
     ldout(cct, 20) << __func__ << " can't allocate aligned rx_buffer "
@@ -1155,8 +1202,10 @@ CtPtr ProtocolV2::read_frame_segment() {
 		   << dendl;
     return _fault();
   }
-
-  return READ_RXBUF(std::move(rx_buffer), handle_read_frame_segment);
+    return read(CONTINUATION(handle_read_frame_segment), std::move(bufferptr (std::move(raw_buf))));
+  } else {
+    return  zero_copy_read(CONTINUATION(handle_read_frame_segment), onwire_len);
+  }
 }
 
 CtPtr ProtocolV2::handle_read_frame_segment(rx_buffer_t &&rx_buffer, int r) {
@@ -1168,8 +1217,14 @@ CtPtr ProtocolV2::handle_read_frame_segment(rx_buffer_t &&rx_buffer, int r) {
     return _fault();
   }
 
+  size_t seg_idx = rx_segments_data.size();
+  const auto& cur_rx_desc = rx_segments_desc.at(seg_idx);
+
+  if (!rx_buffer.is_aligned(cur_rx_desc.alignment)) {
+    rx_buffer.rebuild_aligned_size_and_memory(cur_rx_desc.alignment, cur_rx_desc.alignment);
+  }
   rx_segments_data.emplace_back();
-  rx_segments_data.back().push_back(std::move(rx_buffer));
+  rx_segments_data.back().append(std::move(rx_buffer));
 
   // decrypt incoming data
   // FIXME: if (auth_meta->is_mode_secure()) {
@@ -1192,7 +1247,11 @@ CtPtr ProtocolV2::handle_read_frame_segment(rx_buffer_t &&rx_buffer, int r) {
 
   if (rx_segments_desc.size() == rx_segments_data.size()) {
     // OK, all segments planned to read are read. Can go with epilogue.
-    return READ(get_epilogue_size(), handle_read_frame_epilogue_main);
+    if (!use_zero_copy) {
+      return READ(get_epilogue_size(), handle_read_frame_epilogue_main);
+    } else {
+      return  zero_copy_read(CONTINUATION(handle_read_frame_epilogue_main), get_epilogue_size());
+    }
   } else {
     // TODO: for makeshift only. This will be more generic and throttled
     return read_frame_segment();
@@ -1305,7 +1364,7 @@ CtPtr ProtocolV2::handle_read_frame_epilogue_main(rx_buffer_t &&buffer, int r)
     // decrypt epilogue and authenticate entire frame.
     ceph::bufferlist epilogue_bl;
     {
-      epilogue_bl.push_back(std::move(buffer));
+      epilogue_bl.append(std::move(buffer));
       try {
         epilogue_bl =
             session_stream_handlers.rx->authenticated_decrypt_update_final(
@@ -1320,7 +1379,7 @@ CtPtr ProtocolV2::handle_read_frame_epilogue_main(rx_buffer_t &&buffer, int r)
         reinterpret_cast<epilogue_plain_block_t&>(*epilogue_bl.c_str());
     late_flags = epilogue.late_flags;
   } else {
-    auto& epilogue = reinterpret_cast<epilogue_plain_block_t&>(*buffer->c_str());
+    auto& epilogue = reinterpret_cast<epilogue_plain_block_t&>(*buffer.c_str());
 
     for (std::uint8_t idx = 0; idx < rx_segments_data.size(); idx++) {
       const __u32 expected_crc = epilogue.crc_values[idx];

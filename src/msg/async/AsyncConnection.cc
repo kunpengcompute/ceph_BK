@@ -186,6 +186,58 @@ ssize_t AsyncConnection::read(unsigned len, char *buffer,
   }
   return r;
 }
+// nread == 0 Õý³£ÎÞÊý¾Ý
+// nread < 0 ³ö´í
+ssize_t AsyncConnection::zero_copy_read_bulk(ceph::bufferlist &bl, size_t length)
+{
+  ssize_t nread;
+  ssize_t total = 0;
+  do {
+    nread = cs.zero_copy_read(bl, length);
+    if (nread < 0) {
+      if (nread == -EAGAIN) {
+        nread = 0;
+      } else if (nread == -EINTR) {
+        nread = 1;// just read again
+      } else {
+        ldout(async_msgr->cct, 1) << __func__ << " reading from fd=" << cs.fd()
+                            << " : "<< nread << " " << strerror(nread) << dendl;
+        return -1;
+      }
+    } else if (nread == 0) {
+      ldout(async_msgr->cct, 1) << __func__ << " peer close file descriptor "
+                                << cs.fd() << dendl;
+      return -1;
+    } else {
+      total += nread;
+      if (bl.length() == length)
+       break;
+    }
+  } while(nread > 0);
+  ldout(async_msgr->cct, 20) << __func__
+                             << " read length " << total
+                             << " bl.length " << bl.length()
+                             << " expected length "<< length << dendl;    
+  return 0;
+}
+
+ssize_t AsyncConnection::zero_copy_read(ceph::bufferlist &bl, size_t length,
+                              std::function<void(ceph::bufferlist &bl, ssize_t)> callback) {
+  ldout(async_msgr->cct, 20) << __func__
+                             << (pendingReadLen ? " continue" : " start")
+                             << " len=" << length << dendl;                             
+  ssize_t r = zero_copy_read_bulk(bl, length);
+  if (r < 0)
+    return r;
+  if ((bl.length() < length)) {
+    zeroCopyReadCallback = callback;
+    pendingReadLen = length;
+    r = length - bl.length();
+    read_bl.swap(bl);
+    return r;
+  }
+  return 0;
+}
 
 // Because this func will be called multi times to populate
 // the needed buffer, so the passed in bufferptr must be the same.
@@ -442,12 +494,20 @@ void AsyncConnection::process() {
 
     case STATE_CONNECTION_ESTABLISHED: {
       if (pendingReadLen) {
-        ssize_t r = read(*pendingReadLen, read_buffer, readCallback);
-        if (r <= 0) { // read all bytes, or an error occured
-          pendingReadLen.reset();
-          char *buf_tmp = read_buffer;
-          read_buffer = nullptr;
-          readCallback(buf_tmp, r);
+        if (read_buffer) {
+          ssize_t r = read(*pendingReadLen, read_buffer, readCallback);
+          if (r <= 0) { // read all bytes, or an error occured
+            pendingReadLen.reset();
+            char *buf_tmp = read_buffer;
+            read_buffer = nullptr;
+            readCallback(buf_tmp, r);
+          }
+        } else {
+          ssize_t r = zero_copy_read_bulk(read_bl, *pendingReadLen);
+          if ((read_bl.length() == *pendingReadLen) || (r < 0)) { // read all bytes, or an error occured
+            pendingReadLen.reset();
+            zeroCopyReadCallback(read_bl, r);
+          }
         }
         return;
       }

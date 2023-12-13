@@ -56,6 +56,9 @@ class AsyncConnection : public Connection {
                std::function<void(char *, ssize_t)> callback);
   ssize_t read_until(unsigned needed, char *p);
   ssize_t read_bulk(char *buf, unsigned len);
+  ssize_t zero_copy_read(ceph::bufferlist &bl, size_t length,
+                         std::function<void(ceph::bufferlist &bl, ssize_t)> callback); 
+  ssize_t zero_copy_read_bulk(ceph::bufferlist &bl, size_t length);
 
   ssize_t write(bufferlist &bl, std::function<void(ssize_t)> callback,
                 bool more=false);
@@ -211,7 +214,9 @@ class AsyncConnection : public Connection {
 
   std::optional<std::function<void(ssize_t)>> writeCallback;
   std::function<void(char *, ssize_t)> readCallback;
+  std::function<void(ceph::bufferlist &, ssize_t)> zeroCopyReadCallback;
   std::optional<unsigned> pendingReadLen;
+  ceph::bufferlist read_bl;
   char *read_buffer;
 
  public:

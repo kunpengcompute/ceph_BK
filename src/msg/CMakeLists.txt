@@ -49,6 +49,13 @@ if(HAVE_RDMA)
     async/rdma/RDMAStack.cc)
 endif()
 
+if(HAVE_UCX)
+  list(APPEND msg_srcs
+    async/dpdk/UserspaceEvent.cc
+    async/ucx/UCXStack.cc
+    async/ucx/UCXEvent.cc)
+endif(HAVE_UCX)
+
 add_library(common-msg-objs OBJECT ${msg_srcs})
 
 if(WITH_DPDK)

@@ -363,7 +363,7 @@ ssize_t RDMAConnectedSocketImpl::read_buffers(char* buf, size_t len)
   return read;
 }
 
-ssize_t RDMAConnectedSocketImpl::zero_copy_read(bufferptr &data)
+ssize_t RDMAConnectedSocketImpl::zero_copy_read(ceph::buffer::list &bl, size_t len)
 {
   if (error)
     return -error;
