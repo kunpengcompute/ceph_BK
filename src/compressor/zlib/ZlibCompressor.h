@@ -19,6 +19,7 @@
 
 #include "common/config.h"
 #include "compressor/Compressor.h"
+#include "common/perf_counters.h"
 
 class ZlibCompressor : public Compressor {
   bool isal_enabled;
@@ -32,14 +33,35 @@ public:
     else
       qat_enabled = false;
 #endif
+  zlib_init_logger();
   }
 
-  int compress(const bufferlist &in, bufferlist &out) override;
-  int decompress(const bufferlist &in, bufferlist &out) override;
-  int decompress(bufferlist::const_iterator &p, size_t compressed_len, bufferlist &out) override;
+  ~ZlibCompressor() override;
+
+  int compress(const bufferlist &in, bufferlist &out, boost::optional<int32_t> &compressor_message) override;
+  int decompress(const bufferlist &in, bufferlist &out, boost::optional<int32_t> compressor_message) override;
+  int decompress(bufferlist::const_iterator &p, size_t compressed_len, bufferlist &out, boost::optional<int32_t> compressor_message) override;
 private:
-  int zlib_compress(const bufferlist &in, bufferlist &out);
-  int isal_compress(const bufferlist &in, bufferlist &out);
+  int zlib_compress(const bufferlist &in, bufferlist &out, boost::optional<int32_t> &compressor_message);
+  int isal_compress(const bufferlist &in, bufferlist &out, boost::optional<int32_t> &compressor_message);
+
+  enum {
+      l_zlib_first = 735430,
+      l_zlib_deflateInit2_latency,
+      l_zlib_deflate_latency,
+      l_zlib_deflateEnd_latency,
+      l_zlib_isal_deflate_init_latency,
+      l_zlib_isal_deflate_latency,
+      l_zlib_inflateInit2_latency,
+      l_zlib_inflate_latency,
+      l_zlib_inflateEnd_latency,
+      l_zlib_last
+  };
+
+  PerfCounters *logger = nullptr;
+
+  void zlib_init_logger();
+  void zlib_shutdown_logger();
  };
 
 
