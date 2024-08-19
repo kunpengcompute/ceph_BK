@@ -1,0 +1,533 @@
+diff --git a/ceph.spec b/ceph.spec
+index e32d7754f..537e7569a 100644
+--- a/ceph.spec
++++ b/ceph.spec
+@@ -28,7 +28,7 @@
+ %else
+ %bcond_without tcmalloc
+ %endif
+-%if 0%{?fedora} || 0%{?rhel}
++%if 0%{?fedora} || 0%{?rhel} || 0%{?openEuler}
+ %bcond_without selinux
+ %bcond_without cephfs_java
+ %bcond_without lttng
+@@ -59,7 +59,7 @@
+ %endif
+ %endif
+ %bcond_with seastar
+-%if 0%{?fedora} >= 29 || 0%{?suse_version} >= 1500 || 0%{?rhel} >= 8
++%if 0%{?fedora} >= 29 || 0%{?suse_version} >= 1500 || 0%{?rhel} >= 8 || 0%{?openEuler} >= 2
+ # distros that need a py3 Ceph build
+ %bcond_with python2
+ %else
+@@ -103,7 +103,7 @@
+ Name:		ceph
+ Version:	14.2.8
+ Release:	0%{?dist}
+-%if 0%{?fedora} || 0%{?rhel}
++%if 0%{?fedora} || 0%{?rhel} || 0%{?openEuler}
+ Epoch:		2
+ %endif
+ 
+@@ -155,7 +155,7 @@ BuildRequires:	gcc-c++
+ %endif
+ BuildRequires:	gdbm
+ %if 0%{with tcmalloc}
+-%if 0%{?fedora} || 0%{?rhel}
++%if 0%{?fedora} || 0%{?rhel} || 0%{?openEuler}
+ BuildRequires:	gperftools-devel >= 2.6.1
+ %endif
+ %if 0%{?suse_version}
+@@ -251,7 +251,7 @@ BuildRequires:	liblz4-devel >= 1.7
+ # for prometheus-alerts
+ BuildRequires:  golang-github-prometheus-prometheus
+ %endif
+-%if 0%{?fedora} || 0%{?rhel}
++%if 0%{?fedora} || 0%{?rhel} || 0%{?openEuler}
+ Requires:	systemd
+ BuildRequires:  boost-random
+ BuildRequires:	nss-devel
+@@ -262,7 +262,7 @@ BuildRequires:  openldap-devel
+ #BuildRequires:  krb5-devel
+ BuildRequires:  openssl-devel
+ BuildRequires:  CUnit-devel
+-BuildRequires:  redhat-lsb-core
++BuildRequires:  openeuler-lsb
+ %if 0%{with python2}
+ BuildRequires:	python2-Cython
+ %endif
+@@ -279,7 +279,7 @@ BuildRequires:	lz4-devel >= 1.7
+ %endif
+ # distro-conditional make check dependencies
+ %if 0%{with make_check}
+-%if 0%{?fedora} || 0%{?rhel}
++%if 0%{?fedora} || 0%{?rhel} || 0%{?openEuler}
+ BuildRequires:	python%{_python_buildid}-cherrypy
+ BuildRequires:	python%{_python_buildid}-jwt
+ BuildRequires:	python%{_python_buildid}-routes
+@@ -298,7 +298,7 @@ BuildRequires:  xmlsec1-devel
+ %endif
+ # lttng and babeltrace for rbd-replay-prep
+ %if %{with lttng}
+-%if 0%{?fedora} || 0%{?rhel}
++%if 0%{?fedora} || 0%{?rhel} || 0%{?openEuler}
+ BuildRequires:	lttng-ust-devel
+ BuildRequires:	libbabeltrace-devel
+ %endif
+@@ -310,15 +310,15 @@ BuildRequires:  babeltrace-devel
+ %if 0%{?suse_version}
+ BuildRequires:	libexpat-devel
+ %endif
+-%if 0%{?rhel} || 0%{?fedora}
++%if 0%{?rhel} || 0%{?fedora} || 0%{?openEuler}
+ BuildRequires:	expat-devel
+ %endif
+ #hardened-cc1
+-%if 0%{?fedora} || 0%{?rhel}
+-BuildRequires:  redhat-rpm-config
++%if 0%{?fedora} || 0%{?rhel} || 0%{?openEuler}
++BuildRequires:  openEuler-rpm-config
+ %endif
+ %if 0%{with seastar}
+-%if 0%{?fedora} || 0%{?rhel}
++%if 0%{?fedora} || 0%{?rhel} || 0%{?openEuler}
+ BuildRequires:  cryptopp-devel
+ BuildRequires:  numactl-devel
+ BuildRequires:  protobuf-compiler
+@@ -363,7 +363,7 @@ Requires:      python%{_python_buildid}-setuptools
+ Requires:      util-linux
+ Requires:      xfsprogs
+ Requires:      which
+-%if 0%{?fedora} || 0%{?rhel}
++%if 0%{?fedora} || 0%{?rhel} || 0%{?openEuler}
+ # The following is necessary due to tracker 36508 and can be removed once the
+ # associated upstream bugs are resolved.
+ %if 0%{with tcmalloc}
+@@ -390,7 +390,7 @@ Requires:	python%{_python_buildid}-cephfs = %{_epoch_prefix}%{version}-%{release
+ Requires:	python%{_python_buildid}-rgw = %{_epoch_prefix}%{version}-%{release}
+ Requires:	python%{_python_buildid}-ceph-argparse = %{_epoch_prefix}%{version}-%{release}
+ Requires:	python%{_python_buildid}-requests
+-%if 0%{?fedora} || 0%{?rhel}
++%if 0%{?fedora} || 0%{?rhel} || 0%{?openEuler}
+ Requires:	python%{_python_buildid}-prettytable
+ %endif
+ %if 0%{?suse_version}
+@@ -440,7 +440,7 @@ Requires:       ceph-base = %{_epoch_prefix}%{version}-%{release}
+ Requires:       python%{_python_buildid}-bcrypt
+ Requires:       python%{_python_buildid}-pecan
+ Requires:       python%{_python_buildid}-six
+-%if 0%{?fedora} || 0%{?rhel}
++%if 0%{?fedora} || 0%{?rhel} || 0%{?openEuler}
+ Requires:       python%{_python_buildid}-cherrypy
+ Requires:       python%{_python_buildid}-werkzeug
+ %endif
+@@ -474,7 +474,7 @@ Group:          System/Filesystems
+ %endif
+ Requires:       ceph-mgr = %{_epoch_prefix}%{version}-%{release}
+ Requires:       ceph-grafana-dashboards = %{_epoch_prefix}%{version}-%{release}
+-%if 0%{?fedora} || 0%{?rhel}
++%if 0%{?fedora} || 0%{?rhel} || 0%{?openEuler}
+ Requires:       python%{_python_buildid}-cherrypy
+ Requires:       python%{_python_buildid}-jwt
+ Requires:       python%{_python_buildid}-routes
+@@ -504,7 +504,7 @@ BuildArch:      noarch
+ Group:          System/Filesystems
+ %endif
+ Requires:       ceph-mgr = %{_epoch_prefix}%{version}-%{release}
+-%if 0%{?fedora} || 0%{?rhel} > 7 || 0%{?suse_version}
++%if 0%{?fedora} || 0%{?rhel} || 0%{?openEuler} > 7 || 0%{?suse_version}
+ Requires:       python%{_python_buildid}-numpy
+ %if 0%{without python2}
+ Requires:       python3-scipy
+@@ -620,7 +620,7 @@ Requires:	ceph-selinux = %{_epoch_prefix}%{version}-%{release}
+ %endif
+ Requires:	librados2 = %{_epoch_prefix}%{version}-%{release}
+ Requires:	librgw2 = %{_epoch_prefix}%{version}-%{release}
+-%if 0%{?rhel} || 0%{?fedora}
++%if 0%{?rhel} || 0%{?fedora} || 0%{?openEuler}
+ Requires:	mailcap
+ %endif
+ %description radosgw
+@@ -663,7 +663,7 @@ Summary:	RADOS distributed object store client library
+ %if 0%{?suse_version}
+ Group:		System/Libraries
+ %endif
+-%if 0%{?rhel} || 0%{?fedora}
++%if 0%{?rhel} || 0%{?fedora} || 0%{?openEuler}
+ Obsoletes:	ceph-libs < %{_epoch_prefix}%{version}-%{release}
+ %endif
+ %description -n librados2
+@@ -817,7 +817,7 @@ Requires:	librados2 = %{_epoch_prefix}%{version}-%{release}
+ %if 0%{?suse_version}
+ Requires(post): coreutils
+ %endif
+-%if 0%{?rhel} || 0%{?fedora}
++%if 0%{?rhel} || 0%{?fedora} || 0%{?openEuler}
+ Obsoletes:	ceph-libs < %{_epoch_prefix}%{version}-%{release}
+ %endif
+ %description -n librbd1
+@@ -879,7 +879,7 @@ Summary:	Ceph distributed file system client library
+ Group:		System/Libraries
+ %endif
+ Obsoletes:	libcephfs1
+-%if 0%{?rhel} || 0%{?fedora}
++%if 0%{?rhel} || 0%{?fedora} || 0%{?openEuler}
+ Obsoletes:	ceph-libs < %{_epoch_prefix}%{version}-%{release}
+ Obsoletes:	ceph-libcephfs
+ %endif
+@@ -1218,7 +1218,8 @@ ${CMAKE} .. \
+     -DWITH_RADOSGW_AMQP_ENDPOINT=OFF \
+ %endif
+     -DBOOST_J=$CEPH_SMP_NCPUS \
+-    -DWITH_GRAFANA=ON
++    -DWITH_GRAFANA=ON \
++    -DWITH_REENTRANT_STRSIGNAL=ON
+ 
+ make "$CEPH_MFLAGS_JOBS"
+ 
+@@ -1238,7 +1239,7 @@ make DESTDIR=%{buildroot} install
+ rm -f %{buildroot}/%{_sysconfdir}/init.d/ceph
+ popd
+ install -m 0644 -D src/etc-rbdmap %{buildroot}%{_sysconfdir}/ceph/rbdmap
+-%if 0%{?fedora} || 0%{?rhel}
++%if 0%{?fedora} || 0%{?rhel} || 0%{?openEuler}
+ install -m 0644 -D etc/sysconfig/ceph %{buildroot}%{_sysconfdir}/sysconfig/ceph
+ %endif
+ %if 0%{?suse_version}
+@@ -1330,7 +1331,7 @@ rm -rf %{buildroot}
+ %{_libdir}/libosd_tp.so*
+ %endif
+ %config(noreplace) %{_sysconfdir}/logrotate.d/ceph
+-%if 0%{?fedora} || 0%{?rhel}
++%if 0%{?fedora} || 0%{?rhel} || 0%{?openEuler}
+ %config(noreplace) %{_sysconfdir}/sysconfig/ceph
+ %endif
+ %if 0%{?suse_version}
+@@ -1372,7 +1373,7 @@ if [ $1 -eq 1 ] ; then
+ /usr/bin/systemctl preset ceph.target ceph-crash.service >/dev/null 2>&1 || :
+ fi
+ %endif
+-%if 0%{?fedora} || 0%{?rhel}
++%if 0%{?fedora} || 0%{?rhel} || 0%{?openEuler}
+ %systemd_post ceph.target ceph-crash.service
+ %endif
+ if [ $1 -eq 1 ] ; then
+@@ -1383,7 +1384,7 @@ fi
+ %if 0%{?suse_version}
+ %service_del_preun ceph.target ceph-crash.service
+ %endif
+-%if 0%{?fedora} || 0%{?rhel}
++%if 0%{?fedora} || 0%{?rhel} || 0%{?openEuler}
+ %systemd_preun ceph.target ceph-crash.service
+ %endif
+ 
+@@ -1393,7 +1394,7 @@ fi
+ DISABLE_RESTART_ON_UPDATE="yes"
+ %service_del_postun ceph.target
+ %endif
+-%if 0%{?fedora} || 0%{?rhel}
++%if 0%{?fedora} || 0%{?rhel} || 0%{?openEuler}
+ %systemd_postun ceph.target
+ %endif
+ if [ $1 -ge 1 ] ; then
+@@ -1467,7 +1468,7 @@ fi
+ %pre common
+ CEPH_GROUP_ID=167
+ CEPH_USER_ID=167
+-%if 0%{?rhel} || 0%{?fedora}
++%if 0%{?rhel} || 0%{?fedora} || 0%{?openEuler}
+ /usr/sbin/groupadd ceph -g $CEPH_GROUP_ID -o -r 2>/dev/null || :
+ /usr/sbin/useradd ceph -u $CEPH_USER_ID -o -r -g ceph -s /sbin/nologin -c "Ceph daemons" -d %{_localstatedir}/lib/ceph 2>/dev/null || :
+ %endif
+@@ -1513,7 +1514,7 @@ if [ $1 -eq 1 ] ; then
+   /usr/bin/systemctl preset ceph-mds@\*.service ceph-mds.target >/dev/null 2>&1 || :
+ fi
+ %endif
+-%if 0%{?fedora} || 0%{?rhel}
++%if 0%{?fedora} || 0%{?rhel} || 0%{?openEuler}
+ %systemd_post ceph-mds@\*.service ceph-mds.target
+ %endif
+ if [ $1 -eq 1 ] ; then
+@@ -1524,7 +1525,7 @@ fi
+ %if 0%{?suse_version}
+ %service_del_preun ceph-mds@\*.service ceph-mds.target
+ %endif
+-%if 0%{?fedora} || 0%{?rhel}
++%if 0%{?fedora} || 0%{?rhel} || 0%{?openEuler}
+ %systemd_preun ceph-mds@\*.service ceph-mds.target
+ %endif
+ 
+@@ -1533,7 +1534,7 @@ fi
+ DISABLE_RESTART_ON_UPDATE="yes"
+ %service_del_postun ceph-mds@\*.service ceph-mds.target
+ %endif
+-%if 0%{?fedora} || 0%{?rhel}
++%if 0%{?fedora} || 0%{?rhel} || 0%{?openEuler}
+ %systemd_postun ceph-mds@\*.service ceph-mds.target
+ %endif
+ if [ $1 -ge 1 ] ; then
+@@ -1588,7 +1589,7 @@ if [ $1 -eq 1 ] ; then
+   /usr/bin/systemctl preset ceph-mgr@\*.service ceph-mgr.target >/dev/null 2>&1 || :
+ fi
+ %endif
+-%if 0%{?fedora} || 0%{?rhel}
++%if 0%{?fedora} || 0%{?rhel} || 0%{?openEuler}
+ %systemd_post ceph-mgr@\*.service ceph-mgr.target
+ %endif
+ if [ $1 -eq 1 ] ; then
+@@ -1599,7 +1600,7 @@ fi
+ %if 0%{?suse_version}
+ %service_del_preun ceph-mgr@\*.service ceph-mgr.target
+ %endif
+-%if 0%{?fedora} || 0%{?rhel}
++%if 0%{?fedora} || 0%{?rhel} || 0%{?openEuler}
+ %systemd_preun ceph-mgr@\*.service ceph-mgr.target
+ %endif
+ 
+@@ -1608,7 +1609,7 @@ fi
+ DISABLE_RESTART_ON_UPDATE="yes"
+ %service_del_postun ceph-mgr@\*.service ceph-mgr.target
+ %endif
+-%if 0%{?fedora} || 0%{?rhel}
++%if 0%{?fedora} || 0%{?rhel} || 0%{?openEuler}
+ %systemd_postun ceph-mgr@\*.service ceph-mgr.target
+ %endif
+ if [ $1 -ge 1 ] ; then
+@@ -1715,7 +1716,7 @@ if [ $1 -eq 1 ] ; then
+   /usr/bin/systemctl preset ceph-mon@\*.service ceph-mon.target >/dev/null 2>&1 || :
+ fi
+ %endif
+-%if 0%{?fedora} || 0%{?rhel}
++%if 0%{?fedora} || 0%{?rhel} || 0%{?openEuler}
+ %systemd_post ceph-mon@\*.service ceph-mon.target
+ %endif
+ if [ $1 -eq 1 ] ; then
+@@ -1726,7 +1727,7 @@ fi
+ %if 0%{?suse_version}
+ %service_del_preun ceph-mon@\*.service ceph-mon.target
+ %endif
+-%if 0%{?fedora} || 0%{?rhel}
++%if 0%{?fedora} || 0%{?rhel} || 0%{?openEuler}
+ %systemd_preun ceph-mon@\*.service ceph-mon.target
+ %endif
+ 
+@@ -1735,7 +1736,7 @@ fi
+ DISABLE_RESTART_ON_UPDATE="yes"
+ %service_del_postun ceph-mon@\*.service ceph-mon.target
+ %endif
+-%if 0%{?fedora} || 0%{?rhel}
++%if 0%{?fedora} || 0%{?rhel} || 0%{?openEuler}
+ %systemd_postun ceph-mon@\*.service ceph-mon.target
+ %endif
+ if [ $1 -ge 1 ] ; then
+@@ -1773,7 +1774,7 @@ if [ $1 -eq 1 ] ; then
+   /usr/bin/systemctl preset ceph-rbd-mirror@\*.service ceph-rbd-mirror.target >/dev/null 2>&1 || :
+ fi
+ %endif
+-%if 0%{?fedora} || 0%{?rhel}
++%if 0%{?fedora} || 0%{?rhel} || 0%{?openEuler}
+ %systemd_post ceph-rbd-mirror@\*.service ceph-rbd-mirror.target
+ %endif
+ if [ $1 -eq 1 ] ; then
+@@ -1784,7 +1785,7 @@ fi
+ %if 0%{?suse_version}
+ %service_del_preun ceph-rbd-mirror@\*.service ceph-rbd-mirror.target
+ %endif
+-%if 0%{?fedora} || 0%{?rhel}
++%if 0%{?fedora} || 0%{?rhel} || 0%{?openEuler}
+ %systemd_preun ceph-rbd-mirror@\*.service ceph-rbd-mirror.target
+ %endif
+ 
+@@ -1793,7 +1794,7 @@ fi
+ DISABLE_RESTART_ON_UPDATE="yes"
+ %service_del_postun ceph-rbd-mirror@\*.service ceph-rbd-mirror.target
+ %endif
+-%if 0%{?fedora} || 0%{?rhel}
++%if 0%{?fedora} || 0%{?rhel} || 0%{?openEuler}
+ %systemd_postun ceph-rbd-mirror@\*.service ceph-rbd-mirror.target
+ %endif
+ if [ $1 -ge 1 ] ; then
+@@ -1828,7 +1829,7 @@ if [ $1 -eq 1 ] ; then
+   /usr/bin/systemctl preset ceph-radosgw@\*.service ceph-radosgw.target >/dev/null 2>&1 || :
+ fi
+ %endif
+-%if 0%{?fedora} || 0%{?rhel}
++%if 0%{?fedora} || 0%{?rhel} || 0%{?openEuler}
+ %systemd_post ceph-radosgw@\*.service ceph-radosgw.target
+ %endif
+ if [ $1 -eq 1 ] ; then
+@@ -1839,7 +1840,7 @@ fi
+ %if 0%{?suse_version}
+ %service_del_preun ceph-radosgw@\*.service ceph-radosgw.target
+ %endif
+-%if 0%{?fedora} || 0%{?rhel}
++%if 0%{?fedora} || 0%{?rhel} || 0%{?openEuler}
+ %systemd_preun ceph-radosgw@\*.service ceph-radosgw.target
+ %endif
+ 
+@@ -1848,7 +1849,7 @@ fi
+ DISABLE_RESTART_ON_UPDATE="yes"
+ %service_del_postun ceph-radosgw@\*.service ceph-radosgw.target
+ %endif
+-%if 0%{?fedora} || 0%{?rhel}
++%if 0%{?fedora} || 0%{?rhel} || 0%{?openEuler}
+ %systemd_postun ceph-radosgw@\*.service ceph-radosgw.target
+ %endif
+ if [ $1 -ge 1 ] ; then
+@@ -1890,7 +1891,7 @@ if [ $1 -eq 1 ] ; then
+   /usr/bin/systemctl preset ceph-osd@\*.service ceph-volume@\*.service ceph-osd.target >/dev/null 2>&1 || :
+ fi
+ %endif
+-%if 0%{?fedora} || 0%{?rhel}
++%if 0%{?fedora} || 0%{?rhel} || 0%{?openEuler}
+ %systemd_post ceph-osd@\*.service ceph-volume@\*.service ceph-osd.target
+ %endif
+ if [ $1 -eq 1 ] ; then
+@@ -1906,7 +1907,7 @@ fi
+ %if 0%{?suse_version}
+ %service_del_preun ceph-osd@\*.service ceph-volume@\*.service ceph-osd.target
+ %endif
+-%if 0%{?fedora} || 0%{?rhel}
++%if 0%{?fedora} || 0%{?rhel} || 0%{?openEuler}
+ %systemd_preun ceph-osd@\*.service ceph-volume@\*.service ceph-osd.target
+ %endif
+ 
+@@ -1915,7 +1916,7 @@ fi
+ DISABLE_RESTART_ON_UPDATE="yes"
+ %service_del_postun ceph-osd@\*.service ceph-volume@\*.service ceph-osd.target
+ %endif
+-%if 0%{?fedora} || 0%{?rhel}
++%if 0%{?fedora} || 0%{?rhel} || 0%{?openEuler}
+ %systemd_postun ceph-osd@\*.service ceph-volume@\*.service ceph-osd.target
+ %endif
+ if [ $1 -ge 1 ] ; then
+diff --git a/src/boost/boost/thread/pthread/thread_data.hpp b/src/boost/boost/thread/pthread/thread_data.hpp
+index aefbeb43c..8668cfe80 100644
+--- a/src/boost/boost/thread/pthread/thread_data.hpp
++++ b/src/boost/boost/thread/pthread/thread_data.hpp
+@@ -56,9 +56,6 @@ namespace boost
+           std::size_t page_size = getpagesize();
+ #else
+           std::size_t page_size = ::sysconf( _SC_PAGESIZE);
+-#endif
+-#if PTHREAD_STACK_MIN > 0
+-          if (size<PTHREAD_STACK_MIN) size=PTHREAD_STACK_MIN;
+ #endif
+           size = ((size+page_size-1)/page_size)*page_size;
+           int res = pthread_attr_setstacksize(&val_, size);
+diff --git a/src/common/bit_str.h b/src/common/bit_str.h
+index c4c24f6a7..14ebabfb8 100644
+--- a/src/common/bit_str.h
++++ b/src/common/bit_str.h
+@@ -15,6 +15,8 @@
+ #define CEPH_COMMON_BIT_STR_H
+ 
+ #include <functional>
++#include <stdint.h>
++#include <ostream>
+ 
+ namespace ceph {
+   class Formatter;
+diff --git a/src/compressor/snappy/SnappyCompressor.h b/src/compressor/snappy/SnappyCompressor.h
+index 0291a9231..352ab9a9b 100644
+--- a/src/compressor/snappy/SnappyCompressor.h
++++ b/src/compressor/snappy/SnappyCompressor.h
+@@ -96,7 +96,7 @@ class SnappyCompressor : public Compressor {
+     if (qat_enabled)
+       return qat_accel.decompress(p, compressed_len, dst);
+ #endif
+-    snappy::uint32 res_len = 0;
++    uint32_t res_len = 0;
+     BufferlistSource source_1(p, compressed_len);
+     if (!snappy::GetUncompressedLength(&source_1, &res_len)) {
+       return -1;
+diff --git a/src/librbd/api/PoolMetadata.h b/src/librbd/api/PoolMetadata.h
+index 977ce3638..c0a817359 100644
+--- a/src/librbd/api/PoolMetadata.h
++++ b/src/librbd/api/PoolMetadata.h
+@@ -8,6 +8,7 @@
+ #include "include/rados/librados_fwd.hpp"
+ 
+ #include <map>
++#include <string>
+ 
+ namespace librbd {
+ 
+diff --git a/src/test/librgw_file.cc b/src/test/librgw_file.cc
+index fea8a0611..32e193eb5 100644
+--- a/src/test/librgw_file.cc
++++ b/src/test/librgw_file.cc
+@@ -202,7 +202,7 @@ TEST(LibRGW, GETATTR_OBJECTS) {
+   }
+ }
+ 
+-TEST(LibRGW, CLEANUP) {
++TEST(LibRGW, CLEANUP1) {
+   int ret = 0;
+   using std::get;
+ 
+diff --git a/src/test/librgw_file_aw.cc b/src/test/librgw_file_aw.cc
+index ed51610ce..b72cca75d 100644
+--- a/src/test/librgw_file_aw.cc
++++ b/src/test/librgw_file_aw.cc
+@@ -334,7 +334,7 @@ TEST(LibRGW, DELETE_OBJECT) {
+   }
+ }
+ 
+-TEST(LibRGW, CLEANUP) {
++TEST(LibRGW, CLEANUP4) {
+   int ret;
+   if (object_fh) {
+     ret = rgw_fh_rele(fs, object_fh, RGW_FH_RELE_FLAG_NONE);
+diff --git a/src/test/librgw_file_cd.cc b/src/test/librgw_file_cd.cc
+index b779f044d..c836330a7 100644
+--- a/src/test/librgw_file_cd.cc
++++ b/src/test/librgw_file_cd.cc
+@@ -119,7 +119,7 @@ TEST(LibRGW, DELETE_BUCKET_MULTI) {
+   }
+ }
+ 
+-TEST(LibRGW, CLEANUP) {
++TEST(LibRGW, CLEANUP3) {
+   // do nothing
+ }
+ 
+diff --git a/src/test/librgw_file_gp.cc b/src/test/librgw_file_gp.cc
+index 1ad41cfd3..047ae9db5 100644
+--- a/src/test/librgw_file_gp.cc
++++ b/src/test/librgw_file_gp.cc
+@@ -372,7 +372,7 @@ TEST(LibRGW, DELETE_OBJECT) {
+   }
+ }
+ 
+-TEST(LibRGW, CLEANUP) {
++TEST(LibRGW, CLEANUP2) {
+   if (do_readv) {
+     // release resources
+     ASSERT_NE(uio->uio_rele, nullptr);
+diff --git a/src/test/librgw_file_marker.cc b/src/test/librgw_file_marker.cc
+index 9aaa6b325..8c8a7a765 100644
+--- a/src/test/librgw_file_marker.cc
++++ b/src/test/librgw_file_marker.cc
+@@ -393,7 +393,7 @@ TEST(LibRGW, MARKER1_OBJ_CLEANUP)
+   marker_objs.clear();
+ }
+ 
+-TEST(LibRGW, CLEANUP) {
++TEST(LibRGW, CLEANUP6) {
+   int rc;
+ 
+   if (do_marker1) {
+diff --git a/src/test/librgw_file_nfsns.cc b/src/test/librgw_file_nfsns.cc
+index 9e023c28a..f13df58e5 100644
+--- a/src/test/librgw_file_nfsns.cc
++++ b/src/test/librgw_file_nfsns.cc
+@@ -1079,7 +1079,7 @@ TEST(LibRGW, MARKER1_OBJ_CLEANUP)
+   marker_objs.clear();
+ }
+ 
+-TEST(LibRGW, CLEANUP) {
++TEST(LibRGW, CLEANUP5) {
+   int rc;
+ 
+   if (do_marker1) {
