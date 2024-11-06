@@ -5,6 +5,60 @@
 #include "ECUtil.h"
 
 using namespace std;
+bool ECUtil::should_use_update(const stripe_info_t &sinfo,
+  ErasureCodeInterfaceRef &ec_impl,
+  const pair<uint64_t, uint64_t> &range) {
+  uint64_t chunk_size = sinfo.get_chunk_size();
+  unsigned int k = ec_impl->get_data_chunk_count();
+  pair<uint64_t,uint64_t> stripe_align = sinfo.offset_len_to_stripe_bounds(range);
+  pair<uint64_t,uint64_t> chunk_align = sinfo.offset_len_to_chunk_bounds(range);
+  pair<uint64_t,uint64_t> chunk_unit_align = sinfo.offset_len_to_chunk_unit_bounds(range);
+  unsigned int update_read_count = 0;
+  unsigned int overwrite_read_count = 0;
+  unsigned int overwrite_head_read = chunk_unit_align.first != chunk_align.first ? 1 : 0;
+  unsigned int overwrite_tail_read = (chunk_unit_align.first + chunk_unit_align.second) !=
+	(chunk_align.first + chunk_align.second) ? 1 : 0;
+
+  if (stripe_align.second > sinfo.get_stripe_width()) {
+    update_read_count = chunk_align.second / chunk_size > k ? k : chunk_align.second/chunk_size;
+    overwrite_read_count = (stripe_align.second -chunk_align.second) / chunk_size + overwrite_head_read +
+		overwrite_tail_read;
+  } else {
+    update_read_count = chunk_align.second/chunk_size;
+    overwrite_read_count = k - update_read_count + overwrite_head_read + overwrite_tail_read;
+  }
+  return update_read_count < overwrite_read_count;
+}
+int ECUtil::encode_update(
+  const stripe_info_t &sinfo,
+  ErasureCodeInterfaceRef &ec_impl,
+  map<int, bufferlist> &olddata,
+  map<int, bufferlist> &newdata) {
+
+  ceph_assert(newdata.size());
+  
+  uint64_t total_data_size = newdata.begin()->second.length();
+  ceph_assert(total_data_size % sinfo.get_chunk_unit_size() == 0);
+
+  if (total_data_size == 0) {
+    return 0;
+  }
+  uint64_t step_len = total_data_size < sinfo.get_chunk_size() ? total_data_size : sinfo.get_chunk_size();
+  for (uint64_t i = 0; i<total_data_size; i += step_len) {
+    map<int, bufferlist> oldchunks;
+    map<int, bufferlist> newchunks;
+    for (auto j = olddata.begin(); j != olddata.end(); j++) {
+      oldchunks[j->first].substr_of(j->second, i, step_len);
+      newchunks[j->first].substr_of(newdata[j->first], i, step_len);
+    }
+    ec_impl->encode_update(&oldchunks, &newchunks);
+    for (unsigned int k = ec_impl->get_data_chunk_count(); k < ec_impl->get_chunk_count(); k++) {
+      ceph_assert(newchunks[k].length() ==step_len);
+      newdata[k].claim_append(newchunks[k]);
+    }
+  }
+  return 0;
+}
 
 int ECUtil::decode(
   const stripe_info_t &sinfo,

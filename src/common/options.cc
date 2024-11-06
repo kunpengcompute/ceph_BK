@@ -3313,6 +3313,40 @@ std::vector<Option> get_global_options() {
     .set_default(false)
     .set_description(""),
 
+    Option("osd_ec_partial_read", Option::TYPE_BOOL, Option::LEVEL_ADVANCED)
+    .set_default(true)
+    .set_description("Try to read necessary chunks instead of all chunks in a stripe in ECBackend."
+		     "This option helps to reduce IO and network operation and improve read performance"),
+
+    Option("osd_ec_partial_write", Option::TYPE_BOOL, Option::LEVEL_ADVANCED)
+    .set_default(true)
+    .set_description("Try to read and write partial chunks instead of a complete stripe in erasure code data pool."
+		     "This option helps to reduce IO and network operation and improve write performance"),
+
+    Option("osd_ec_partial_update", Option::TYPE_BOOL, Option::LEVEL_ADVANCED)
+    .set_default(true)
+    .set_description("Try to read and write partial chunks instead of a complete stripe in erasure code data pool."
+		     "This option helps to reduce IO and network operation and improve write performance."
+		     "Only bluestore and setting ec plugin to isa support this feature for now."),
+
+    Option("osd_ec_zero_opt", Option::TYPE_BOOL, Option::LEVEL_ADVANCED)
+    .set_default(true)
+    .set_description("When creating a small RGW object, do not allocate actual disk space to zero part."
+		     "And record only metadata to save storage space"),
+    Option("kpsec_log_fullpath", Option::TYPE_STR, Option::LEVEL_ADVANCED)
+    .set_default("/var/log/ceph/")
+    .set_description("The path to store KPS_EC log, the default is /var/log/ceph/")
+    .set_flag(Option::FLAG_RUNTIME),
+
+    Option("kpsec_log_level", Option::TYPE_STR, Option::LEVEL_ADVANCED)
+    .set_default("critical/debug")
+    .set_description("The level of kpsec_log, the default is critical/debug")
+    .set_flag(Option::FLAG_RUNTIME),
+
+    Option("kpsec_log_memlogsize", Option::TYPE_UINT, Option::LEVEL_ADVANCED)
+    .set_default(100)
+    .set_description("Kpsec_memlog_size,it is the size of memlog_ringbuffer, the default is 100"),
+
     Option("osd_recover_clone_overlap_limit", Option::TYPE_INT, Option::LEVEL_ADVANCED)
     .set_default(10)
     .set_description(""),
@@ -4749,6 +4783,10 @@ std::vector<Option> get_global_options() {
     Option("bluestore_bitmapallocator_span_size", Option::TYPE_SIZE, Option::LEVEL_DEV)
     .set_default(1024)
     .set_description(""),
+
+    Option("bluestore_kpsallocator_enable", Option::TYPE_BOOL, Option::LEVEL_ADVANCED)
+    .set_default(true)
+    .set_description("Enable KPS Allocator"),
 
     Option("bluestore_max_deferred_txc", Option::TYPE_UINT, Option::LEVEL_ADVANCED)
     .set_default(32)

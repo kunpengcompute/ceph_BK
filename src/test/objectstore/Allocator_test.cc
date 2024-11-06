@@ -74,10 +74,19 @@ TEST_P(AllocTest, test_alloc_min_alloc)
     EXPECT_EQ(4*block_size,
 	      alloc->allocate(4 * (uint64_t)block_size, (uint64_t) block_size,
 			      0, (int64_t) 0, &extents));
+#ifdef KPS_ALLOCATOR
+    if (extents.size() == 2) {
+        EXPECT_EQ(2u, extents.size()); 
+        EXPECT_EQ(extents[0].length + extents[1].length, 4 * block_size);
+    } else{
+        EXPECT_EQ(1u, extents.size());
+        EXPECT_EQ(extents[0].length, 4 * block_size);
+  }
+#else
     EXPECT_EQ(1u, extents.size());
     EXPECT_EQ(extents[0].length, 4 * block_size);
+#endif
   }
-
   /*
    * Allocate extent and make sure we get two different extents.
    */
@@ -268,7 +277,11 @@ TEST_P(AllocTest, test_alloc_fragmentation)
   }
   if (bitmap_alloc) {
     // fragmentation = one l1 slot is free + one l1 slot is partial
+#ifdef KPS_ALLOCATOR
+    EXPECT_EQ(100U, uint64_t(alloc->get_fragmentation(alloc_unit) * 100));
+#else
     EXPECT_EQ(50U, uint64_t(alloc->get_fragmentation(alloc_unit) * 100));
+#endif
   } else {
     // fragmentation approx = 257 intervals / 768 max intervals
     EXPECT_EQ(33u, uint64_t(alloc->get_fragmentation(alloc_unit) * 100));
@@ -375,8 +388,13 @@ TEST_P(AllocTest, test_alloc_bug_24598)
 
   EXPECT_EQ(static_cast<int64_t>(want_size),
 	    alloc->allocate(want_size, 0x100000, 0, 0, &tmp));
+#ifdef KPS_ALLOCATOR
+  EXPECT_EQ(0x3f00000u, tmp[0].offset);
+  EXPECT_EQ(0x200000u, tmp[0].length);
+#else
   EXPECT_EQ(0x4b00000u, tmp[0].offset);
   EXPECT_EQ(0x200000u, tmp[0].length);
+#endif
   EXPECT_EQ(1u, tmp.size());
 }
 

@@ -3085,6 +3085,9 @@ int OSD::init()
   auto rotating_auth_timeout =
     g_conf().get_val<int64_t>("rotating_keys_bootstrap_timeout");
 
+  SdslogParam param;
+  int hiRet = 0;
+
   // sanity check long object name handling
   {
     hobject_t l;
@@ -3218,6 +3221,10 @@ int OSD::init()
   }
 
   clear_temp_objects();
+
+  get_kpseclog_param(param);
+  hiRet = HiInit(param);
+  dout(0) << "HiInit return " << hiRet << dendl;
 
   // initialize osdmap references in sharded wq
   for (auto& shard : shards) {
@@ -6819,6 +6826,9 @@ COMMAND("cache status",
 COMMAND("send_beacon",
         "Send OSD beacon to mon immediately",
         "osd", "r")
+COMMAND("reload_kps_conf",
+        "reload kps configures.",
+        "osd", "rw")
 };
 
 void OSD::do_command(
@@ -7347,6 +7357,36 @@ int OSD::_do_command(
   else if (prefix == "send_beacon") {
     if (is_active()) {
       send_beacon(ceph::coarse_mono_clock::now());
+    }
+  } else if (prefix == "reload_kps_conf") {
+    string error_info;
+    SdslogParam param;
+    get_kpseclog_param(param);
+    r = HiReload(param);
+    dout(0) << "HiReload Return " << r << dendl;
+
+    if (f) {
+      f->open_object_section("reload_kps_conf");
+      if (r == 0) {
+	f->dump_string("reload_kps_conf", "success");
+      } else {
+        f->dump_string("reload_kps_conf", "failure");
+      }
+      if (!error_info.empty()) {
+	f->dump_string("error", error_info);
+      }
+      f->close_section();
+      f->flush(ds);
+    } else {
+      if (r==0) {
+        ds << "reload_kps_conf: " << "success";
+      } else {
+	ds << "reload_kps_conf: " << "failure";
+      }	
+      if (!error_info.empty()) {
+        ds << "\n"
+	   << "error: " << error_info;
+      }
     }
   } else {
     ss << "unrecognized command '" << prefix << "'";

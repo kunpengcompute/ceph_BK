@@ -1,16 +1,3 @@
-/*
- * Ceph - scalable distributed file system
- *
- * Copyright (C) 2014 CERN (Switzerland)
- *                                                                                                                                                                                                            * Author: Andreas-Joachim Peters <Andreas.Joachim.Peters@cern.ch>                                                                                                                                            *
- *  This library is free software; you can redistribute it and/or
- *  modify it under the terms of the GNU Lesser General Public
- *  License as published by the Free Software Foundation; either
- *  version 2.1 of the License, or (at your option) any later version.
- *
- */
-
-// -----------------------------------------------------------------------------
 #include "xor_op.h"
 #include <stdio.h>
 #include <string.h>
@@ -18,28 +5,27 @@
 #include "arch/arm.h"
 #include "include/ceph_assert.h"
 
-// -----------------------------------------------------------------------------
+// --------------------------------------------------------------------
 
 
-// -----------------------------------------------------------------------------
+// --------------------------------------------------------------------
 
 void
-// -----------------------------------------------------------------------------
+// --------------------------------------------------------------------
 byte_xor(unsigned char* cw, unsigned char* dw, unsigned char* ew)
-// -----------------------------------------------------------------------------
+// --------------------------------------------------------------------
 {
   while (cw < ew)
     *dw++ ^= *cw++;
 }
-
-// -----------------------------------------------------------------------------
+// --------------------------------------------------------------------
 
 void
-// -----------------------------------------------------------------------------
+// --------------------------------------------------------------------
 vector_xor(vector_op_t* cw,
-           vector_op_t* dw,
-           vector_op_t* ew)
-// -----------------------------------------------------------------------------
+	   vector_op_t* dw,
+	   vector_op_t* ew)
+// --------------------------------------------------------------------
 {
   ceph_assert(is_aligned(cw, EC_ISA_VECTOR_OP_WORDSIZE));
   ceph_assert(is_aligned(dw, EC_ISA_VECTOR_OP_WORDSIZE));
@@ -49,15 +35,14 @@ vector_xor(vector_op_t* cw,
   }
 }
 
-
-// -----------------------------------------------------------------------------
+// --------------------------------------------------------------------
 
 void
-// -----------------------------------------------------------------------------
+// --------------------------------------------------------------------
 region_xor(unsigned char** src,
-           unsigned char* parity,
-           int src_size,
-           unsigned size)
+	   unsigned char* parity,
+	   int src_size,
+	   unsigned size)
 {
   if (!size) {
     // nothing to do
@@ -68,7 +53,7 @@ region_xor(unsigned char** src,
     // nothing to do
     return;
   }
-
+  
   if (src_size == 1) {
     // just copy source to parity
     memcpy(parity, src[0], size);
@@ -77,10 +62,6 @@ region_xor(unsigned char** src,
 
   unsigned size_left = size;
 
-  // ----------------------------------------------------------
-  // region or vector XOR operations require aligned addresses
-  // ----------------------------------------------------------
-
   bool src_aligned = true;
   for (int i = 0; i < src_size; i++) {
     src_aligned &= is_aligned(src[i], EC_ISA_VECTOR_OP_WORDSIZE);
@@ -88,32 +69,25 @@ region_xor(unsigned char** src,
 
   if (src_aligned &&
       is_aligned(parity, EC_ISA_VECTOR_OP_WORDSIZE)) {
-
+	
 #ifdef __x86_64__
     if (ceph_arch_intel_sse2) {
-      // -----------------------------
-      // use SSE2 region xor function
-      // -----------------------------
       unsigned region_size =
-        (size / EC_ISA_VECTOR_SSE2_WORDSIZE) * EC_ISA_VECTOR_SSE2_WORDSIZE;
+	(size / EC_ISA_VECTOR_SSE2_WORDSIZE) * EC_ISA_VECTOR_SSE2_WORDSIZE;
 
       size_left -= region_size;
-      // 64-byte region xor
       region_sse2_xor((char**) src, (char*) parity, src_size, region_size);
-    } else
+    }else
 #elif defined __aarch64__
-   if (ceph_arch_neon) {
+    if (ceph_arch_neon) {
       unsigned region_size =
 	(size / EC_ISA_VECTOR_NEON_WORDSIZE) * EC_ISA_VECTOR_NEON_WORDSIZE;
 
       size_left -= region_size;
       region_neon_xor((char**) src, (char*) parity, src_size, region_size);
-   } else
+    } else
 #endif
     {
-      // --------------------------------------------
-      // use region xor based on vector xor operation
-      // --------------------------------------------
       unsigned vector_words = size / EC_ISA_VECTOR_OP_WORDSIZE;
       unsigned vector_size = vector_words * EC_ISA_VECTOR_OP_WORDSIZE;
       memcpy(parity, src[0], vector_size);
@@ -121,33 +95,26 @@ region_xor(unsigned char** src,
       size_left -= vector_size;
       vector_op_t* p_vec = (vector_op_t*) parity;
       for (int i = 1; i < src_size; i++) {
-        vector_op_t* s_vec = (vector_op_t*) src[i];
-        vector_op_t* e_vec = s_vec + vector_words;
-        vector_xor(s_vec, p_vec, e_vec);
+	vector_op_t* s_vec = (vector_op_t*) src[i];
+	vector_op_t* e_vec = s_vec + vector_words;
+	vector_xor(s_vec, p_vec, e_vec);
       }
     }
   }
 
   if (size_left) {
-    // --------------------------------------------------
-    // xor the not aligned part with byte-wise region xor
-    // --------------------------------------------------
     memcpy(parity + size - size_left, src[0] + size - size_left, size_left);
-    for (int i = 1; i < src_size; i++) {
+    for (int i = 1; i< src_size; i++) {
       byte_xor(src[i] + size - size_left, parity + size - size_left, src[i] + size);
     }
   }
 }
 
-// -----------------------------------------------------------------------------
-
 void
-// -----------------------------------------------------------------------------
 region_sse2_xor(char** src,
-                char* parity,
-                int src_size,
-                unsigned size)
-// -----------------------------------------------------------------------------
+		char* parity,
+		int src_size,
+		unsigned size)
 {
 #ifdef __x86_64__
   ceph_assert(!(size % EC_ISA_VECTOR_SSE2_WORDSIZE));
@@ -187,9 +154,11 @@ region_sse2_xor(char** src,
 
   asm volatile("sfence" : : : "memory");
 #endif // __x86_64__
-  return;
+   return;
 }
+
 void
+// --------------------------------------------------------------------------
 region_neon_xor(char** src,
 		char* parity,
 		int src_size,
@@ -203,24 +172,24 @@ region_neon_xor(char** src,
   unsigned char* vbuf[256];
 
   for (int v = 0; v < src_size; v++) {
-    vbuf[v] = (unsigned char*)src[v];
+    vbuf[v] = (unsigned char*) src[v];
   }
 
   l = src_size;
   p = (unsigned char*) parity;
 
-  for (i = 0 ; i < size; i += EC_ISA_VECTOR_NEON_WORDSIZE) {
+  for (i = 0; i < size; i += EC_ISA_VECTOR_NEON_WORDSIZE) {
     __asm__ __volatile__("ldp q0, q1, [%x[v]]"::[v]"r"(&vbuf[0][i]));
     __asm__ __volatile__("ldp q2, q3, [%x[v], #32]"::[v]"r"(&vbuf[0][i]));
+    
+    for ( d = 1; d < l; d++) {
+      __asm__ __volatile__("ldp q4, q5, [%x[v]]"::[v]"r"(&vbuf[d][i]));
+      __asm__ __volatile__("ldp q6, q7, [%x[v], #32]"::[v]"r"(&vbuf[d][i]));
 
-    for (d = 1; d < l; d++) {
-    __asm__ __volatile__("ldp q4, q5, [%x[v]]"::[v]"r"(&vbuf[d][i]));
-    __asm__ __volatile__("ldp q6, q7, [%x[v], #32]"::[v]"r"(&vbuf[d][i]));
-
-    __asm__ __volatile__("eor v0.16b, v4.16b, v0.16b");
-    __asm__ __volatile__("eor v1.16b, v5.16b, v1.16b");
-    __asm__ __volatile__("eor v2.16b, v6.16b, v2.16b");
-    __asm__ __volatile__("eor v3.16b, v7.16b, v3.16b");
+      __asm__ __volatile__("eor v0.16b, v4.16b, v0.16b");
+      __asm__ __volatile__("eor v1.16b, v5.16b, v1.16b");
+      __asm__ __volatile__("eor v2.16b, v6.16b, v2.16b");
+      __asm__ __volatile__("eor v3.16b, v7.16b, v3.16b");
     }
     __asm__ __volatile__("stp q0, q1, [%x[p]]"::[p]"r"(&p[i]));
     __asm__ __volatile__("stp q2, q3, [%x[p], #32]"::[p]"r"(&p[i]));
@@ -229,3 +198,6 @@ region_neon_xor(char** src,
 #endif // __aarch64__
   return;
 }
+      
+
+

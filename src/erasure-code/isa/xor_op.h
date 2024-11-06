@@ -27,6 +27,7 @@
 
 #define EC_ISA_ADDRESS_ALIGNMENT 32u
 #define EC_ISA_VECTOR_SSE2_WORDSIZE 64u
+#define EC_ISA_VECTOR_NEON_WORDSIZE 64u
 
 #if __GNUC__ > 4 || \
   ( (__GNUC__ == 4) && (__GNUC_MINOR__ >= 4) ) ||\
@@ -79,6 +80,12 @@ region_xor(unsigned char** src, unsigned char* parity, int src_size, unsigned si
 // -------------------------------------------------------------------------
 void
 region_sse2_xor(char** src /* array of 64-byte aligned source pointer to xor */,
+                char* parity /* 64-byte aligned output pointer containing the parity */,
+                int src_size /* size of the source pointer array */,
+                unsigned size /* size of the region to xor */);
+
+void
+region_neon_xor(char** src /* array of 64-byte aligned source pointer to xor */,
                 char* parity /* 64-byte aligned output pointer containing the parity */,
                 int src_size /* size of the source pointer array */,
                 unsigned size /* size of the region to xor */);

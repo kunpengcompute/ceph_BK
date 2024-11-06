@@ -132,3 +132,7 @@ add_executable(unittest_memstore_clone
   $<TARGET_OBJECTS:store_test_fixture>)
 add_ceph_unittest(unittest_memstore_clone)
 target_link_libraries(unittest_memstore_clone os global)
+
+if(HAVE_KPSALLOCATOR)
+  add_definitions("-DKPS_ALLOCATOR")
+endif (HAVE_KPSALLOCATOR)

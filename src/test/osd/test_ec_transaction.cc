@@ -38,8 +38,10 @@ TEST(ectransaction, two_writes_separated)
   t->write(h, 669856, b.length(), b, 0);
 
   ECUtil::stripe_info_t sinfo(2, 8192);
+  ErasureCodeInterfaceRef ecimpl = NULL;
   auto plan = ECTransaction::get_write_plan(
     sinfo,
+    ecimpl,
     std::move(t),
     [&](const hobject_t &i) {
       ECUtil::HashInfoRef ref(new ECUtil::HashInfo(1));
@@ -48,7 +50,6 @@ TEST(ectransaction, two_writes_separated)
     &dpp);
   generic_derr << "to_read " << plan.to_read << dendl;
   generic_derr << "will_write " << plan.will_write << dendl;
-
   ASSERT_EQ(0u, plan.to_read.size());
   ASSERT_EQ(1u, plan.will_write.size());
 }
@@ -60,8 +61,9 @@ TEST(ectransaction, two_writes_nearby)
   bufferlist a, b;
   t->create(h);
 
-  // two nearby writes, both partly touching the same 8192-byte stripe
+  // two nearby writes, both partly touching the same 8192-byte stripe 
   ECUtil::stripe_info_t sinfo(2, 8192);
+  ErasureCodeInterfaceRef ecimpl = NULL;
   a.append_zero(565760);
   t->write(h, 0, a.length(), a, 0);
   b.append_zero(2437120);
@@ -69,6 +71,7 @@ TEST(ectransaction, two_writes_nearby)
 
   auto plan = ECTransaction::get_write_plan(
     sinfo,
+    ecimpl,
     std::move(t),
     [&](const hobject_t &i) {
       ECUtil::HashInfoRef ref(new ECUtil::HashInfo(1));
@@ -92,6 +95,7 @@ TEST(ectransaction, many_writes)
   t->create(h);
 
   ECUtil::stripe_info_t sinfo(2, 8192);
+  ErasureCodeInterfaceRef ecimpl = NULL;
   // write 2801664~512
   // write 2802176~512
   // write 2802688~512
@@ -110,6 +114,7 @@ TEST(ectransaction, many_writes)
 
   auto plan = ECTransaction::get_write_plan(
     sinfo,
+    ecimpl,
     std::move(t),
     [&](const hobject_t &i) {
       ECUtil::HashInfoRef ref(new ECUtil::HashInfo(1));

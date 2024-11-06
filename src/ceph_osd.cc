@@ -20,6 +20,8 @@
 #include <iostream>
 #include <string>
 
+#include <hi_coreutil.h>
+
 #include "osd/OSD.h"
 #include "os/ObjectStore.h"
 #include "mon/MonClient.h"
@@ -714,6 +716,7 @@ flushjournal_out:
   if (err < 0) {
     derr << TEXT_RED << " ** ERROR: osd init failed: " << cpp_strerror(-err)
          << TEXT_NORMAL << dendl;
+    HiFinish();
     forker.exit(1);
   }
 
@@ -746,6 +749,7 @@ flushjournal_out:
   unregister_async_signal_handler(SIGTERM, handle_osd_signal);
   shutdown_async_signal_handler();
 
+  HiFinish();
   // done
   delete osd;
   delete ms_public;

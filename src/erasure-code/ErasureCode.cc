@@ -197,7 +197,18 @@ int ErasureCode::encode_chunks(const set<int> &want_to_encode,
 {
   ceph_abort_msg("ErasureCode::encode_chunks not implemented");
 }
- 
+
+int ErasureCode::encode_update(map<int, bufferlist> *encoded,
+			       map<int, bufferlist> *chunks_new)
+{
+  ceph_abort_msg("ErasureCode::encode_update can only support isa-l now");
+}
+
+bool ErasureCode::is_support_ec_update()
+{
+  return false;
+}
+
 int ErasureCode::_decode(const set<int> &want_to_read,
 			 const map<int, bufferlist> &chunks,
 			 map<int, bufferlist> *decoded)
@@ -254,6 +265,51 @@ int ErasureCode::parse(const ErasureCodeProfile &profile,
 		       ostream *ss)
 {
   return to_mapping(profile, ss);
+}
+
+int ErasureCode::get_chunks_to_update(
+    bufferlist &to_update, const std::pair<unsigned int, unsigned int> range,
+    const int k, const std::map<int, bufferlist >&encoded,
+    std::map<int, bufferlist> *chunks_to_update)
+{
+  unsigned int off = range.first;
+  unsigned int len = range.second;
+  if (len == 0) return 0;
+
+  unsigned int end = off + len - 1;
+  unsigned int chunk_size = encoded.begin()->second.length();
+  ceph_assert(end < chunk_size * k);
+
+  int chunk_idx_start = off / chunk_size;
+  int chunk_idx_end = end /chunk_size;
+
+  //may have redundant copy in head and tail, but this is much easier to read
+  //than lots of joint things
+  for (int i = chunk_idx_start; i <= chunk_idx_end; i++){
+    auto encoded_chunk_iter = encoded.find(i);
+    ceph_assert(encoded_chunk_iter != encoded.end());
+
+    auto encoded_chunk = encoded_chunk_iter->second;
+    ceph_assert(encoded_chunk.length() == chunk_size);
+
+    bufferptr buf(buffer::create_aligned(chunk_size, SIMD_ALIGN));
+    buf.copy_in(0, chunk_size, encoded_chunk.c_str(), true);
+    (*chunks_to_update)[i].push_back(buf);
+  }
+
+  //extra operations in head and tail
+  int off_in_head = off % chunk_size;
+  (*chunks_to_update)[chunk_idx_start].copy_in(
+      off_in_head, min(chunk_size - off_in_head, to_update.length()),
+      to_update.c_str(), true);
+
+  if (chunk_idx_start != chunk_idx_end) {
+    int remainder_in_tail = end +1 - chunk_idx_end * chunk_size;
+    (*chunks_to_update)[chunk_idx_end].copy_in(
+        0, remainder_in_tail, to_update.c_str() + chunk_idx_end * chunk_size,
+	true);
+  }
+  return  0;
 }
 
 const vector<int> &ErasureCode::get_chunk_mapping() const {

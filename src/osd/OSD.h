@@ -61,6 +61,9 @@
 #include "messages/MOSDOp.h"
 #include "common/EventTrace.h"
 
+#include <hi_coreutil.h>
+#include "boost/algorithm/string.hpp"
+
 #define CEPH_OSD_PROTOCOL    10 /* cluster internal */
 
 /*
@@ -2384,6 +2387,23 @@ private:
   void get_perf_reports(
       std::map<OSDPerfMetricQuery, OSDPerfMetricReport> *reports);
 
+  void get_kpseclog_param( SdslogParam &param) {
+    param.usrModuleName = "kpsec-" + cct->_conf->name.get_id();
+    param.fullPath = cct->_conf->kpsec_log_fullpath;
+    vector<string> vecLogLv;
+    boost::split(vecLogLv, cct->_conf->kpsec_log_level, boost::is_any_of("/|"));
+    if (vecLogLv.size() == 1) {
+      param.fileLogLevel = param.memLogLevel = param.ParseToInt(vecLogLv[0]);
+    } else if (vecLogLv.size() == 2) {
+      param.fileLogLevel = param.ParseToInt(vecLogLv[0]);
+      param.memLogLevel = param.ParseToInt(vecLogLv[1]);
+    } else {
+      param.fileLogLevel = 0;
+      param.memLogLevel = 4;
+    }
+    param.memLogSize = cct->_conf->kpsec_log_memlogsize;
+  }
+  
   Mutex m_perf_queries_lock = {"OSD::m_perf_queries_lock"};
   std::list<OSDPerfMetricQuery> m_perf_queries;
   std::map<OSDPerfMetricQuery, OSDPerfMetricLimits> m_perf_limits;
