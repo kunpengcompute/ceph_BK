@@ -666,14 +666,16 @@ int AsyncMessenger::send_to(Message *m, int type, const entity_addrvec_t& addrs)
   return 0;
 }
 
-ConnectionRef AsyncMessenger::connect_to(int type, const entity_addrvec_t& addrs)
+ConnectionRef AsyncMessenger::connect_to(int type, const entity_addrvec_t& addrs, bool not_local_dest)
 {
   Mutex::Locker l(lock);
-  if (*my_addrs == addrs ||
-      (addrs.v.size() == 1 &&
-       my_addrs->contains(addrs.front()))) {
-    // local
-    return local_connection;
+  if (!not_local_dest) {
+    if (*my_addrs == addrs ||
+	      (addrs.v.size() == 1 &&
+	        my_addrs->contains(addrs.front()))) {
+      // local
+      return local_connection;
+    }
   }
 
   auto av = _filter_addrs(type, addrs);

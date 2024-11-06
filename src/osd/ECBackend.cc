@@ -494,10 +494,15 @@ struct SendPushReplies : public Context {
     replies.swap(in);
   }
   void finish(int) override {
+    std::vector<std::pair<int, Message*>> messages;
+    messages.reserve(replies.size());
     for (map<int, MOSDPGPushReply*>::iterator i = replies.begin();
 	 i != replies.end();
 	 ++i) {
-      l->send_message_osd_cluster(i->first, i->second, epoch);
+      messages.push_back(std::make_pair(i->first, i->second));
+    }
+    if (!messages.empty()) {
+      l->send_message_osd_cluster(messages, epoch);
     }
     replies.clear();
   }
@@ -1121,6 +1126,19 @@ error:
    reply->from = get_parent()->whoami_shard();
    reply->tid = op.tid;
  }
+
+void ECBackend::handle_sub_read_n_reply(
+  pg_shard_t from,
+  ECSubRead &op,
+  const ZTracer::Trace &trace,
+  int priority)
+{
+  ECSubReadReply reply;
+  RecoveryMessages rm;
+  handle_sub_read(from, op, &reply, trace);
+  handle_sub_read_reply(from, reply, &rm, trace);
+  dispatch_recovery_messages(rm, priority);
+}
  
  void ECBackend::handle_sub_write_reply(
    pg_shard_t from,
@@ -1812,12 +1830,19 @@ void ECBackend::do_read_op(ReadOp &op)
     }
   }
   dout(20) << __func__ << " messages size: " << messages.size() << dendl;
+  std::optional<ECSubRead> local_read_op;
+  std::vector<std::pair<int, Message*>> m;
+  m.reserve(messages.size());
   for (map<pg_shard_t, ECSubRead>::iterator i = messages.begin();
        i != messages.end();
        ++i) {
     op.in_progress.insert(i->first);
     shard_to_read_map[i->first].insert(op.tid);
     i->second.tid = tid;
+    if (i->first == get_parent()->whoami_shard()) {
+      local_read_op = std::move(i->second);
+      continue;
+    }
     MOSDECSubOpRead *msg = new MOSDECSubOpRead;
     msg->set_priority(priority);
     msg->pgid = spg_t(
@@ -1825,7 +1850,7 @@ void ECBackend::do_read_op(ReadOp &op)
       i->first.shard);
     msg->map_epoch = get_osdmap_epoch();
     msg->min_epoch = get_parent()->get_interval_start_epoch();
-    msg->op = i->second;
+    msg->op = std::move(i->second);
     msg->op.from = get_parent()->whoami_shard();
     msg->op.tid = tid;
     if (op.trace) {
@@ -1833,12 +1858,20 @@ void ECBackend::do_read_op(ReadOp &op)
       msg->trace.init("ec sub read", nullptr, &op.trace);
       msg->trace.keyval("shard", i->first.shard.id);
     }
-    get_parent()->send_message_osd_cluster(
-      i->first.osd,
-      msg,
-      get_osdmap_epoch());
+    m.push_back(std::make_pair(i->first.osd, msg));
+  }
+
+  if (!m.empty()) {
+    get_parent()->send_message_osd_cluster(m, get_osdmap_epoch());
   }
   dout(10) << __func__ << ": started " << op << dendl;
+  if (local_read_op) {
+    handle_sub_read_n_reply(
+      get_parent()->whoami_shard(),
+      *local_read_op,
+      op.trace,
+      op.priority);
+  }
 }
 
 ECUtil::HashInfoRef ECBackend::get_hash_info(
@@ -2142,6 +2175,8 @@ bool ECBackend::try_reads_to_commit()
   ObjectStore::Transaction empty;
   bool should_write_local = false;
   ECSubWrite local_write_op;
+  std::vector<std::pair<int, Message*>> messages;
+  messages.reserve(get_parent()->get_acting_recovery_backfill_shards().size());
   set<pg_shard_t> backfill_shards = get_parent()->get_backfill_shards();
   for (set<pg_shard_t>::const_iterator i =
 	 get_parent()->get_acting_recovery_backfill_shards().begin();
@@ -2191,11 +2226,15 @@ bool ECBackend::try_reads_to_commit()
       r->map_epoch = get_osdmap_epoch();
       r->min_epoch = get_parent()->get_interval_start_epoch();
       r->trace = trace;
-      get_parent()->send_message_osd_cluster(
-	i->osd, r, get_osdmap_epoch());
-        dout(20) << __func__ << ": send to remote osd sop: "<<sop<<dendl;
+      messages.push_back(std::make_pair(i->osd, r));
+      dout(20) << __func__ << ": send to remote osd sop: "<<sop<<dendl;
     }
   }
+
+  if (!messages.empty()) {
+    get_parent()->send_message_osd_cluster(messages, get_osdmap_epoch());
+  }
+
   if (should_write_local) {
     handle_sub_write(
       get_parent()->whoami_shard(),
