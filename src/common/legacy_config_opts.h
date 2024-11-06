@@ -152,6 +152,8 @@ OPTION(ms_dump_on_send, OPT_BOOL)           // hexdump msg to log on send
 OPTION(ms_dump_corrupt_message_level, OPT_INT)  // debug level to hexdump undecodeable messages at
 OPTION(ms_async_op_threads, OPT_U64)            // number of worker processing threads for async messenger created on init
 OPTION(ms_async_max_op_threads, OPT_U64)        // max number of worker processing threads for async messenger
+OPTION(ms_async_op_threads_polling, OPT_BOOL)
+OPTION(ms_async_op_threads_adaptive_polling, OPT_BOOL)
 OPTION(ms_async_rdma_device_name, OPT_STR)
 OPTION(ms_async_rdma_enable_hugepage, OPT_BOOL)
 OPTION(ms_async_rdma_buffer_size, OPT_INT)
@@ -916,6 +918,8 @@ OPTION(memstore_device_bytes, OPT_U64)
 OPTION(memstore_page_set, OPT_BOOL)
 OPTION(memstore_page_size, OPT_U64)
 
+OPTION(bluestore_kv_sync_thread_polling, OPT_BOOL)
+OPTION(bluestore_kv_finalize_thread_polling, OPT_BOOL)
 OPTION(bdev_debug_inflight_ios, OPT_BOOL)
 OPTION(bdev_inject_crash, OPT_INT)  // if N>0, then ~ 1/N IOs will complete before we crash on flush.
 OPTION(bdev_inject_crash_flush_delay, OPT_INT) // wait N more seconds on flush

@@ -10961,6 +10961,7 @@ void BlueStore::_kv_sync_thread()
   std::unique_lock l(kv_lock);
   ceph_assert(!kv_sync_started);
   kv_sync_started = true;
+  volatile bool is_polling = cct->_conf->bluestore_kv_sync_thread_polling;
   kv_cond.notify_all();
   while (true) {
     ceph_assert(kv_committing.empty());
@@ -11192,6 +11193,11 @@ clear:
 	}
       }
 
+      while (is_polling && !kv_stop && kv_queue.empty() &&
+          ((deferred_done_queue.empty() && deferred_stable_queue.empty()) ||
+          !deferred_aggressive)) {
+      }
+
       l.lock();
       // previously deferred "done" are now "stable" by virtue of this
       // commit cycle.
@@ -11210,6 +11216,7 @@ void BlueStore::_kv_finalize_thread()
   std::unique_lock l(kv_finalize_lock);
   ceph_assert(!kv_finalize_started);
   kv_finalize_started = true;
+  volatile bool is_polling = cct->_conf->bluestore_kv_finalize_thread_polling;
   kv_finalize_cond.notify_all();
   while (true) {
     ceph_assert(kv_committed.empty());
@@ -11265,6 +11272,10 @@ void BlueStore::_kv_finalize_thread()
 	l_bluestore_kv_final_lat,
 	mono_clock::now() - start,
 	cct->_conf->bluestore_log_op_age);
+
+     while (is_polling && !kv_finalize_stop && kv_committing_to_finalize.empty() &&
+          deferred_stable_to_finalize.empty()) {
+     }
 
       l.lock();
     }

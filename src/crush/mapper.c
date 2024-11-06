@@ -289,6 +289,26 @@ static __u64 crush_ln(unsigned int xin)
 	return result;
 }
 
+/* crush_ln的输入总是先于0xffff，所以它的
+   输入全集就是0~65535，因此考虑用静态表
+   代替每一次临时计算，这可以消除ceph运行
+   过程中crush_ln的热点 */
+static __s64 *crush_ln_table = NULL;
+void crush_init_lntable()
+{
+	if (crush_ln_table != NULL) {
+		return;
+	}
+	crush_ln_table = (__s64 *)malloc(sizeof(__s64) * 65536);
+	if (crush_ln_table == NULL) {
+		printf("crush_init_lntable malloc error!\n");
+		return;
+	}
+	for (int i = 0; i < CRUSH_LN_TABLE_LEN; i++) {
+		crush_ln_table[i] = crush_ln(i & 0xffff) - 0x1000000000000ll;
+	}
+}
+
 
 /*
  * straw2
@@ -358,28 +378,92 @@ static inline __s64 generate_exponential_distribution(int type, int x, int y, in
 	return div64_s64(ln, weight);
 }
 
+static inline void generate_exponential_distribution_x3(int type, int x[3], int y[3], int z[3], 
+                                                      int weight[3], __s64 res[3])
+{
+	unsigned int u[3];
+	crush_hash32_3x3(type, x, y, z, u);
+	u[0] &= 0xffff;
+	u[1] &= 0xffff;
+	u[2] &= 0xffff;
+
+	res[0] = div64_s64(crush_ln_table[u[0]], weight[0]);
+	res[1] = div64_s64(crush_ln_table[u[1]], weight[1]);
+	res[2] = div64_s64(crush_ln_table[u[2]], weight[2]);
+	return;
+}
+
+static inline void generate_exponential_distribution_simdx2(int type, int x[CRUSH_SIMD_NUM * 2], int y[CRUSH_SIMD_NUM * 2],
+			int z[CRUSH_SIMD_NUM * 2], int weight[CRUSH_SIMD_NUM * 2], __s64 draw[CRUSH_SIMD_NUM * 2])
+{
+ unsigned int u[CRUSH_SIMD_NUM * 2];
+ crush_hash32_3_simdx2(type, x, y, z, u);
+
+ for (int i = 0; i < CRUSH_SIMD_NUM * 2; i++) {
+  draw[i] = div64_s64(crush_ln_table[u[i] & 0xffff], weight[i]);
+ }
+
+ return;
+}
+
+#define STRAW2_DRAW_UPDATE(i, j) do {     \
+    if (weights[i + j]) { \
+     draw = draw_simd[j];  \
+    } else {      \
+     draw = S64_MIN;    \
+    }        \
+    if (i + j == 0 || draw > high_draw) { \
+     high = i + j;    \
+     high_draw = draw;   \
+    }        \
+   } while (0);
+
+
 static int bucket_straw2_choose(const struct crush_bucket_straw2 *bucket,
 				int x, int r, const struct crush_choose_arg *arg,
                                 int position)
 {
-	unsigned int i, high = 0;
+	unsigned int i = 0;
+    unsigned int high = 0;
 	__s64 draw, high_draw = 0;
-        __u32 *weights = get_choose_arg_weights(bucket, arg, position);
-        __s32 *ids = get_choose_arg_ids(bucket, arg);
-	for (i = 0; i < bucket->h.size; i++) {
-                dprintk("weight 0x%x item %d\n", weights[i], ids[i]);
-		if (weights[i]) {
-			draw = generate_exponential_distribution(bucket->h.hash, x, ids[i], r, weights[i]);
-		} else {
-			draw = S64_MIN;
-		}
+    __u32 *weights = get_choose_arg_weights(bucket, arg, position);
+    __s32 *ids = get_choose_arg_ids(bucket, arg);
+    __s64 draw_simd[CRUSH_SIMD_NUM * 2];
+    int x_simd[CRUSH_SIMD_NUM * 2];
+    int r_simd[CRUSH_SIMD_NUM * 2];
+    for (int j = 0; j < CRUSH_SIMD_NUM * 2; j++) {
+        x_simd[j] = x;
+        r_simd[j] = r;
+    }
 
-		if (i == 0 || draw > high_draw) {
-			high = i;
-			high_draw = draw;
-		}
+    if (bucket->h.size >= CRUSH_SIMD_NUM * 2) {
+        for (i = 0; i <= bucket->h.size - (CRUSH_SIMD_NUM * 2); i += (CRUSH_SIMD_NUM * 2)) {
+            generate_exponential_distribution_simdx2(bucket->h.hash, x_simd, &ids[i], r_simd, &weights[i], draw_simd);
+            for (int j = 0; j < CRUSH_SIMD_NUM * 2; j++) {
+                STRAW2_DRAW_UPDATE(i, j);
+            }
+        }
 	}
 
+    /* x < 8 */
+    __s32 idsimd[CRUSH_SIMD_NUM * 2];
+    __u32 wtsimd[CRUSH_SIMD_NUM * 2];
+    for (int j = 0; j < bucket->h.size - i; j++) {
+        idsimd[j] = ids[i+j];
+        wtsimd[j] = weights[i+j];
+    }
+
+    if (bucket->h.size >= CRUSH_SIMD_NUM) {
+        generate_exponential_distribution_simdx2(bucket->h.hash, x_simd, idsimd, r_simd, wtsimd, draw_simd);
+        for (int j = 0; j < bucket->h.size - i; j++) {
+            STRAW2_DRAW_UPDATE(i, j);
+        }
+    } else {
+        generate_exponential_distribution_x3(bucket->h.hash, x_simd, idsimd, r_simd, wtsimd, draw_simd);
+        for (int j = 0; j < bucket->h.size - i; j++) {
+            STRAW2_DRAW_UPDATE(i, j);
+        }
+    }
 	return bucket->h.items[high];
 }
 

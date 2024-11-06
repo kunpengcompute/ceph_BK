@@ -210,11 +210,6 @@ public:
       }
     }
 
-    if (empty) {
-      std::scoped_lock l{mutex};
-      cond.notify_all();
-    }
-
     ls.clear();
   }
 

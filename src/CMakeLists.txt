@@ -615,7 +615,21 @@ install(FILES
 install(PROGRAMS
   ceph_common.sh
   ceph-osd-prestart.sh
+  ceph-osd-spdk.sh
+  create-osd.sh
+  delete-osd.sh
+  enable-spdk-conf.sh
+  disable-spdk-conf.sh
   DESTINATION ${CMAKE_INSTALL_LIBEXECDIR}/ceph)
+
+install(PROGRAMS
+  ${CMAKE_SOURCE_DIR}/src/spdk/scripts/common.sh
+  ${CMAKE_SOURCE_DIR}/src/spdk/scripts/setup.sh
+  DESTINATION ${CMAKE_INSTALL_LIBEXECDIR}/ceph/spdk/scripts)
+
+install(FILES
+  ${CMAKE_SOURCE_DIR}/src/spdk/include/spdk/pci_ids.h
+  DESTINATION ${CMAKE_INSTALL_LIBEXECDIR}/ceph/spdk/include/spdk)
 
 install(PROGRAMS
   ${CMAKE_SOURCE_DIR}/src/ceph-create-keys

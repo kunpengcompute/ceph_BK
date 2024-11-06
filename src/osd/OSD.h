@@ -82,6 +82,12 @@ enum {
   l_osd_op_lat,
   l_osd_op_process_lat,
   l_osd_op_prepare_lat,
+  l_osd_op_before_find_context_lat,
+  l_osd_op_find_object_context_lat,
+  l_osd_op_before_exeute_lat,
+  l_osd_op_pg_submit_transaction,
+  l_osd_op_rep_issue_op,
+  l_osd_op_queue_transactions,
   l_osd_op_r,
   l_osd_op_r_outb,
   l_osd_op_r_lat,
@@ -1274,6 +1280,7 @@ class OSD : public Dispatcher,
   Mutex tick_timer_lock;
   SafeTimer tick_timer_without_osd_lock;
   std::string gss_ktfile_client{};
+  std::atomic<int> inflight_num {0};
 
 public:
   // config observer bits

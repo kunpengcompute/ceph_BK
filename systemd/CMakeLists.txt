@@ -12,7 +12,8 @@ foreach(service
     ceph-osd@
     ceph-radosgw@
     ceph-rbd-mirror@
-    rbdmap)
+    rbdmap
+    spdk-conf)
   configure_file(
     ${service}.service.in
     ${service}.service
@@ -32,4 +33,5 @@ install(FILES
   ceph-radosgw.target
   ceph-rbd-mirror.target
   ceph-volume@.service
+  spdk-conf.target
   DESTINATION ${CMAKE_INSTALL_SYSTEMD_SERVICEDIR})

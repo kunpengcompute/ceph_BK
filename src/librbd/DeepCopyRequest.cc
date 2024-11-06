@@ -296,7 +296,7 @@ void DeepCopyRequest<I>::handle_refresh_object_map(int r) {
     RWLock::WLocker object_map_locker(m_dst_image_ctx->object_map_lock);
     std::swap(m_dst_image_ctx->object_map, m_object_map);
   }
-  delete m_object_map;
+  m_object_map->put();
 
   send_copy_metadata();
 }

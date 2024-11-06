@@ -156,7 +156,7 @@ void Striper::assimilate_extents(
     for (vector<ObjectExtent>::iterator p = it->second.begin();
 	 p != it->second.end();
 	 ++p) {
-      extents.push_back(*p);
+      extents.emplace_back(*p);
     }
   }
 }

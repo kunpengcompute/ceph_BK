@@ -3723,6 +3723,31 @@ void OSD::create_logger()
   osd_plb.add_time_avg(
     l_osd_op_process_lat, "op_process_latency",
     "Latency of client operations (excluding queue time)");
+
+  osd_plb.add_time_avg(
+    l_osd_op_before_find_context_lat, "op_before_find_context_lat",
+    "Latency of before find context lat");
+
+  osd_plb.add_time_avg(
+    l_osd_op_find_object_context_lat, "op_find_object_context_lat",
+    "Latency of find object context");
+
+  osd_plb.add_time_avg(
+    l_osd_op_before_exeute_lat, "op_before_exeute_lat",
+    "Latency of dequeue to exeute_ctx()");
+
+  osd_plb.add_time_avg(
+    l_osd_op_pg_submit_transaction, "op_pg_submit_transaction",
+    "Latency of pg submit transaction");
+
+  osd_plb.add_time_avg(
+    l_osd_op_rep_issue_op, "op_rep_issue_op",
+    "Latency of rep issueop");
+
+  osd_plb.add_time_avg(
+    l_osd_op_queue_transactions, "op_queue_transactions",
+    "Latency of queue transactions");
+
   osd_plb.add_time_avg(
     l_osd_op_prepare_lat, "op_prepare_latency",
     "Latency of client operations (excluding queue time and wait for finished)");
@@ -10147,10 +10172,12 @@ void OSD::enqueue_op(spg_t pg, OpRequestRef&& op, epoch_t epoch)
 	   << " latency " << latency
 	   << " epoch " << epoch
 	   << " " << *(op->get_req()) << dendl;
+#if defined(WITH_LTTNG) && defined(WITH_EVENTTRACE)
   op->osd_trace.event("enqueue op");
   op->osd_trace.keyval("priority", priority);
   op->osd_trace.keyval("cost", cost);
   op->mark_queued_for_pg();
+#endif
   logger->tinc(l_osd_op_before_queue_op_lat, latency);
   op_shardedwq.queue(
     OpQueueItem(
@@ -10212,9 +10239,11 @@ void OSD::dequeue_op(
 
   if (pg->is_deleting())
     return;
-
+  
+#if defined(WITH_LTTNG) && defined(WITH_EVENTTRACE)
   op->mark_reached_pg();
   op->osd_trace.event("dequeue_op");
+#endif
 
   pg->do_request(op, handle);
 
@@ -11147,7 +11176,10 @@ void OSD::ShardedOpWQ::_process(uint32_t thread_index, heartbeat_handle_d *hb)
       dout(20) << __func__ << " empty q, waiting" << dendl;
       osd->cct->get_heartbeat_map()->clear_timeout(hb);
       sdata->shard_lock.unlock();
-      sdata->sdata_cond.wait(wait_lock);
+      if (!is_smallest_thread_index) {
+        sdata->sdata_cond.wait(wait_lock);
+        dout(20) << "wake up from thread_index: " << thread_index << dendl;
+      }
       wait_lock.unlock();
       sdata->shard_lock.lock();
       if (sdata->pqueue->empty() &&
@@ -11186,6 +11218,10 @@ void OSD::ShardedOpWQ::_process(uint32_t thread_index, heartbeat_handle_d *hb)
   }
 
   OpQueueItem item = sdata->pqueue->dequeue();
+  if (osd->inflight_num > 0) {
+    osd->inflight_num--;
+  }
+
   if (osd->is_stopping()) {
     sdata->shard_lock.unlock();
     for (auto c : oncommits) {
@@ -11420,6 +11456,7 @@ void OSD::ShardedOpWQ::_process(uint32_t thread_index, heartbeat_handle_d *hb)
 }
 
 void OSD::ShardedOpWQ::_enqueue(OpQueueItem&& item) {
+  osd->inflight_num++;
   uint32_t shard_index =
     item.get_ordering_token().hash_to_shard(osd->shards.size());
 
@@ -11439,11 +11476,15 @@ void OSD::ShardedOpWQ::_enqueue(OpQueueItem&& item) {
   sdata->shard_lock.unlock();
 
   std::lock_guard l{sdata->sdata_wait_lock};
-  sdata->sdata_cond.notify_one();
+  if (osd->inflight_num > 2) {
+    dout(20) << __func__ << " wake up due to multi op : " << osd->inflight_num << dendl;
+    sdata->sdata_cond.notify_one();
+  }
 }
 
 void OSD::ShardedOpWQ::_enqueue_front(OpQueueItem&& item)
 {
+  osd->inflight_num++;
   auto shard_index = item.get_ordering_token().hash_to_shard(osd->shards.size());
   auto& sdata = osd->shards[shard_index];
   ceph_assert(sdata);
@@ -11467,6 +11508,7 @@ void OSD::ShardedOpWQ::_enqueue_front(OpQueueItem&& item)
   sdata->_enqueue_front(std::move(item), osd->op_prio_cutoff);
   sdata->shard_lock.unlock();
   std::lock_guard l{sdata->sdata_wait_lock};
+  dout(20) << __func__ << " wake up due to multi op : " << osd->inflight_num << dendl;
   sdata->sdata_cond.notify_one();
 }
 
