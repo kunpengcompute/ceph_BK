@@ -42,6 +42,7 @@
 #include "perfglue/heap_profiler.h"
 #include "common/blkdev.h"
 #include "common/numa.h"
+#include "xor_op.h"
 
 #define dout_context cct
 #define dout_subsys ceph_subsys_bluestore
@@ -10961,6 +10962,7 @@ void BlueStore::_kv_sync_thread()
   std::unique_lock l(kv_lock);
   ceph_assert(!kv_sync_started);
   kv_sync_started = true;
+  volatile bool is_polling = cct->_conf->bluestore_kv_sync_thread_polling;
   kv_cond.notify_all();
   while (true) {
     ceph_assert(kv_committing.empty());
@@ -11192,6 +11194,11 @@ clear:
 	}
       }
 
+      while (is_polling && !kv_stop && kv_queue.empty() &&
+          ((deferred_done_queue.empty() && deferred_stable_queue.empty()) ||
+          !deferred_aggressive)) {
+      }
+
       l.lock();
       // previously deferred "done" are now "stable" by virtue of this
       // commit cycle.
@@ -11210,6 +11217,7 @@ void BlueStore::_kv_finalize_thread()
   std::unique_lock l(kv_finalize_lock);
   ceph_assert(!kv_finalize_started);
   kv_finalize_started = true;
+  volatile bool is_polling = cct->_conf->bluestore_kv_finalize_thread_polling;
   kv_finalize_cond.notify_all();
   while (true) {
     ceph_assert(kv_committed.empty());
@@ -11265,6 +11273,10 @@ void BlueStore::_kv_finalize_thread()
 	l_bluestore_kv_final_lat,
 	mono_clock::now() - start,
 	cct->_conf->bluestore_log_op_age);
+
+     while (is_polling && !kv_finalize_stop && kv_committing_to_finalize.empty() &&
+          deferred_stable_to_finalize.empty()) {
+     }
 
       l.lock();
     }
@@ -13103,6 +13115,20 @@ int BlueStore::_do_write(
   WriteContext wctx;
   _choose_write_options(c, o, fadvise_flags, &wctx);
   o->extent_map.fault_range(db, offset, length);
+  if (fadvise_flags & CEPH_OSD_OP_FLAG_FADVISE_UPDATE) {
+    bufferlist old_data;
+    bufferlist new_data;
+    bufferptr&& ptr(buffer::create_small_page_aligned(bl.length()));
+    ptr.copy_in(0,bl.length(), bl.c_str());
+    new_data.append(ptr);
+    _do_read(c.get(), o, offset, length, old_data, CEPH_OSD_OP_FLAG_FADVISE_NOCACHE);
+    unsigned char* chunks[3];
+    dout(20) << __func__ << "update offset:" << offset << "len:" << length << dendl;
+    chunks[0]=(unsigned char*)old_data.c_str();
+    chunks[1]=(unsigned char*)new_data.c_str();
+    chunks[2]=(unsigned char*)bl.c_str();
+    region_xor(chunks, chunks[2], 2 ,length);
+  }
   _do_write_data(txc, c, o, offset, length, bl, &wctx);
   r = _do_alloc_write(txc, c, o, &wctx);
   if (r < 0) {

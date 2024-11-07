@@ -32,6 +32,7 @@ if(WITH_BLUESTORE)
     bluestore/FreelistManager.cc
     bluestore/StupidAllocator.cc
     bluestore/BitmapAllocator.cc
+   bluestore/xor_op.cc
   )
 endif(WITH_BLUESTORE)
 
@@ -72,6 +73,13 @@ if(WITH_SPDK)
 endif()
 
 add_library(os STATIC ${libos_srcs})
+
+if(HAVE_KPSALLOCATOR)
+  add_definitions("-DKPS_ALLOCATOR")
+  target_include_directories(os SYSTEM PRIVATE
+    ${KPS_BLUESTORE_INCLUDE_DIR})
+  target_link_libraries(os ${KPS_BLUESTORE_LIBRARIES})
+endif(HAVE_KPSALLOCATOR)
 
 target_link_libraries(os heap_profiler kv)
 

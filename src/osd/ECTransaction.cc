@@ -21,7 +21,277 @@
 #include "os/ObjectStore.h"
 #include "common/inline_variant.h"
 
+void prepare_update_chunks(const ECUtil::stripe_info_t &sinfo,
+  ErasureCodeInterfaceRef &ecimpl,
+  DoutPrefixProvider *dpp,
+  unsigned int offset,
+  bufferlist &orig_bl, bufferlist &update_bl,
+  map<int, bufferlist> &orig_chunks,  map<int,bufferlist> &update_chunks) {
+  unsigned int  k = ecimpl->get_data_chunk_count();
+  uint64_t stripe_width = sinfo.get_stripe_width();
+  uint64_t chunk_size = sinfo.get_chunk_size();
+  unsigned int index = (offset % stripe_width) / chunk_size;
+  unsigned int count = orig_bl.length() / chunk_size >= k ? k : orig_bl.length() / chunk_size;
+  ldpp_dout(dpp,20) << __func__ << ":length " << orig_bl.length() << " index: " << index << "count: " << count
+	            << dendl;
+  unsigned chunk_len = count == k ? orig_bl.length() / k : chunk_size;
+  for ( unsigned int i = index; i < count + index; i++) {
+    int chunk_index = ecimpl->chunk_index(i);
+    orig_chunks[chunk_index].substr_of(orig_bl, (i - index) * chunk_len, chunk_len);
+    update_chunks[chunk_index].substr_of(update_bl, (i-index) * chunk_len, chunk_len);
+  }
+}
 
+void prepare_update_chunks_internal_stripe(const ECUtil::stripe_info_t &sinfo,
+  ErasureCodeInterfaceRef &ecimpl, DoutPrefixProvider *dpp,
+  unsigned int offset, bufferlist &orig_bl, bufferlist &update_bl,
+  map<int, bufferlist> &orig_chunks, 
+  map<int, bufferlist> &update_chunks_for_encode,
+  map<int, pair<uint64_t, bufferlist>> &update_chunks) {
+  uint64_t chunk_size = sinfo.get_chunk_size();
+  uint64_t stripe_width = sinfo.get_stripe_width();
+  unsigned int index = (offset % stripe_width) / chunk_size;
+  unsigned int count = ((offset + orig_bl.length() - 1) % stripe_width) / chunk_size - index + 1;
+  int chunk_index = 0;
+  ldpp_dout(dpp,20) << __func__ << ":length " << orig_bl.length() << " index: " << index 
+	            << "count: " << count << dendl;
+  if ( count == 1) {
+    chunk_index = ecimpl->chunk_index(index);
+    orig_chunks[chunk_index].substr_of(orig_bl, 0, orig_bl.length());
+    update_chunks[chunk_index].second.substr_of(update_bl, 0, update_bl.length());
+    update_chunks[chunk_index].first = sinfo.logical_offset_to_chunk_unit_offset(offset);
+    update_chunks_for_encode[chunk_index].substr_of(update_bl, 0, update_bl.length());
+  } else {
+    uint64_t len = orig_bl.length();
+    uint64_t left = len;
+    uint64_t chunk_len = 0;
+    if (offset % chunk_size != 0) {
+       chunk_len = chunk_size - (offset%chunk_size);
+       ldpp_dout(dpp, 20) << __func__ << " first : length " << chunk_len << dendl;
+       chunk_index = ecimpl->chunk_index(index);
+       bufferlist orig_bl_tmp;
+       bufferlist update_bl_tmp;
+       orig_bl_tmp.append_zero(chunk_size);
+       update_bl_tmp.append_zero(chunk_size);
+       orig_bl_tmp.copy_in(chunk_size - chunk_len, chunk_len, orig_bl);
+       update_bl_tmp.copy_in(chunk_size-chunk_len, chunk_len, update_bl);
+       orig_chunks[chunk_index].append(orig_bl_tmp);
+       update_chunks_for_encode[chunk_index].append(update_bl_tmp);
+       update_chunks[chunk_index].second.substr_of(update_bl, 0, chunk_len);
+       update_chunks[chunk_index].first = sinfo.logical_offset_to_chunk_unit_offset(offset);
+       offset += chunk_len;
+       left -= chunk_len;
+       index++;
+    }
+    chunk_len = (chunk_size - (offset % chunk_size)) < left ? (chunk_size - (offset % chunk_size)) : left;
+    while ( chunk_len == chunk_size) {
+       chunk_index = ecimpl->chunk_index(index);
+       orig_chunks[chunk_index].substr_of(orig_bl, len - left, chunk_len);
+       update_chunks[chunk_index].second.substr_of(update_bl, len - left, chunk_len);
+       update_chunks[chunk_index].first = sinfo.logical_offset_to_chunk_unit_offset(offset);
+       update_chunks_for_encode[chunk_index].substr_of(update_bl, len - left, chunk_len);
+       offset += chunk_len;
+       left -= chunk_len;
+       chunk_len = (chunk_size- (offset % chunk_size)) < left ? (chunk_size - (offset % chunk_size)) : left;
+       index++;
+    }
+    if (left != 0) {
+       ldpp_dout(dpp, 20) << __func__ << " last : length " << left << dendl;
+       chunk_index = ecimpl->chunk_index(index);
+       bufferlist orig_bl_tmp;
+       bufferlist update_bl_tmp;
+       orig_bl_tmp.append_zero(chunk_size);
+       update_bl_tmp.append_zero(chunk_size);
+       bufferlist orig_bl_left;
+       bufferlist update_bl_left;
+       orig_bl_left.substr_of(orig_bl, len - left, left);
+       update_bl_left.substr_of(update_bl, len - left, left);
+       orig_bl_tmp.copy_in(0, left, orig_bl_left);
+       update_bl_tmp.copy_in(0, left, update_bl_left);
+       orig_chunks[chunk_index].append(orig_bl_tmp);
+       update_chunks_for_encode[chunk_index].append(update_bl_tmp);
+       update_chunks[chunk_index].second.substr_of(update_bl, len - left, left);
+       update_chunks[chunk_index].first = sinfo.logical_offset_to_chunk_unit_offset(offset);
+    }
+  }
+}
+
+void get_chunks_to_update ( const ECUtil::stripe_info_t &sinfo,
+  ErasureCodeInterfaceRef &ecimpl,
+  DoutPrefixProvider *dpp,
+  uint64_t offset, bufferlist &orig_bl, bufferlist &update_bl,
+  map<int, extent_map> &update_chunks) {
+  uint64_t length = orig_bl.length();
+  uint64_t end = offset + length;
+  uint64_t stripe_width = sinfo.get_stripe_width();
+  uint64_t chunk_size = sinfo.get_chunk_size();
+
+  ldpp_dout(dpp, 20) << __func__ << ": " << " offset: " << offset << " len: " << orig_bl.length() << " update len " << update_bl.length() << dendl;
+  if ((offset / stripe_width == (end - 1) / stripe_width) && length !=  stripe_width) {
+    map<int, bufferlist> orig_chunks;
+    map<int, pair<uint64_t, bufferlist>> tmp_update_chunks;
+    map<int, bufferlist> tmp_update_chunks_for_encode;
+    prepare_update_chunks_internal_stripe(sinfo, ecimpl, dpp, offset, orig_bl, update_bl, orig_chunks,
+		                          tmp_update_chunks_for_encode, tmp_update_chunks);
+    int r = ECUtil::encode_update(sinfo, ecimpl, orig_chunks, tmp_update_chunks_for_encode);
+    ceph_assert(r == 0);
+    for (auto i = tmp_update_chunks.begin(); i != tmp_update_chunks.end(); i++) {
+      ldpp_dout(dpp, 20) << __func__ << " id " << i->first << " chunk off " << i->second.first
+	                 << " len " << i->second.second.length() << dendl;
+      update_chunks[i->first].insert(i->second.first, i->second.second.length(), i->second.second);
+    }
+    uint64_t chunk_off = length - (chunk_size - (offset % chunk_size)) == 0 ? sinfo.logical_offset_to_chunk_unit_offset(offset) : 
+	               sinfo.logical_to_prev_chunk_offset(offset);
+    for (unsigned int i = ecimpl->get_data_chunk_count(); i < ecimpl->get_chunk_count();i++) {
+      ldpp_dout(dpp, 20) << __func__ << " id " << i << "chunk off " << chunk_off
+	                 << " len " << tmp_update_chunks_for_encode[i].length() << dendl;
+      update_chunks[i].insert(chunk_off, tmp_update_chunks_for_encode[i].length(),
+		              tmp_update_chunks_for_encode[i]);
+    }
+  } else {
+    uint64_t head_len;
+    uint64_t tail_off;
+    uint64_t tail_len;
+    if (isp2(stripe_width)) {
+      head_len = p2nphase(offset, stripe_width);
+      tail_off = p2align(end,stripe_width);
+      tail_len = p2phase(end,stripe_width);
+    } else {
+      head_len = sinfo.logical_to_next_stripe_offset(offset) - offset;
+      tail_off = sinfo.logical_to_prev_stripe_offset(end);
+      tail_len = end - sinfo.logical_to_prev_stripe_offset(end);
+    }
+    uint64_t middle_off = offset + head_len;
+    uint64_t middle_len = length - head_len - tail_len;
+
+    if (head_len) {
+      ldpp_dout(dpp, 20) << __func__ << ": head_len " << head_len << dendl;  
+      map<int, bufferlist> orig_chunks;
+      map<int, pair<uint64_t, bufferlist>> tmp_update_chunks;
+      map<int, bufferlist> tmp_update_chunks_for_encode;
+      bufferlist _orig_bl;
+      bufferlist _update_bl;
+      _orig_bl.substr_of(orig_bl, 0, head_len);
+      _update_bl.substr_of(update_bl, 0, head_len);
+      prepare_update_chunks_internal_stripe(sinfo, ecimpl, dpp, offset, _orig_bl,_update_bl, orig_chunks,
+ 		                            tmp_update_chunks_for_encode, tmp_update_chunks);
+      int r = ECUtil::encode_update(sinfo, ecimpl, orig_chunks, tmp_update_chunks_for_encode);
+      ceph_assert(r == 0);
+      for (auto i = tmp_update_chunks.begin(); i != tmp_update_chunks.end(); i++) {
+        ldpp_dout(dpp, 20) << __func__ << " id " << i->first << "head chunk off " << i->second.first
+	                   << " len " << i->second.second.length() << dendl;
+        update_chunks[i->first].insert(i->second.first, i->second.second.length(), i->second.second);
+      }
+      uint64_t chunk_off = head_len - (chunk_size - (offset % chunk_size)) == 0 ? sinfo.logical_offset_to_chunk_unit_offset(offset) : 
+	                   sinfo.logical_to_prev_chunk_offset(offset);
+      for (unsigned int i = ecimpl->get_data_chunk_count(); i < ecimpl->get_chunk_count();i++) {
+        ldpp_dout(dpp, 20) << __func__ << " id " << i << "head chunk off " << chunk_off 
+ 		           << " len " << tmp_update_chunks_for_encode[i].length() << dendl;
+	update_chunks[i].insert(chunk_off,tmp_update_chunks_for_encode[i].length(),
+			        tmp_update_chunks_for_encode[i]);
+      }
+    }
+
+    if (middle_len) {
+      ldpp_dout(dpp, 20) << __func__ << ": middle_off " << middle_off << "middle_len" << middle_len << dendl;  
+      map<int, bufferlist> orig_chunks;
+      map<int, bufferlist> tmp_update_chunks;
+      bufferlist _orig_bl;
+      bufferlist _update_bl;
+      _orig_bl.substr_of(orig_bl, middle_off - offset, middle_len );
+      _update_bl.substr_of(update_bl, middle_off - offset, middle_len);
+      prepare_update_chunks(sinfo, ecimpl, dpp, middle_off, _orig_bl, _update_bl, orig_chunks, tmp_update_chunks);
+      int r = ECUtil::encode_update(sinfo, ecimpl, orig_chunks, tmp_update_chunks);
+      ceph_assert(r == 0);
+      for (auto i = tmp_update_chunks.begin(); i != tmp_update_chunks.end(); i++) {
+        ldpp_dout(dpp, 20) << __func__ << " id " << i->first << "middle chunk off " << sinfo.logical_to_prev_chunk_offset(middle_off)
+	                   << " len " << i->second.length() << dendl;
+        update_chunks[i->first].insert(sinfo.logical_to_prev_chunk_offset(middle_off), i->second.length(), i->second);
+      }
+    }
+
+    if (tail_len) {
+      ldpp_dout(dpp, 20) << __func__ << ": tail_off " << tail_off << "tail_len" << tail_len << dendl;  
+      map<int, bufferlist> orig_chunks;
+      map<int, bufferlist> tmp_update_chunks_for_encode;
+      map<int, pair<uint64_t, bufferlist>> tmp_update_chunks;
+      bufferlist _orig_bl;
+      bufferlist _update_bl;
+      _orig_bl.substr_of(orig_bl, tail_off - offset, tail_len );
+      _update_bl.substr_of(update_bl, tail_off - offset, tail_len);
+      prepare_update_chunks_internal_stripe(sinfo, ecimpl, dpp, tail_off, _orig_bl, _update_bl, orig_chunks,
+		                            tmp_update_chunks_for_encode, tmp_update_chunks);
+      int r = ECUtil::encode_update(sinfo, ecimpl, orig_chunks, tmp_update_chunks_for_encode);
+      ceph_assert(r == 0);
+      for (auto i = tmp_update_chunks.begin(); i != tmp_update_chunks.end(); i++) {
+        ldpp_dout(dpp, 20) << __func__ << " id " << i->first << "tail chunk off " << i->second.first
+	                   << " len " << i->second.second.length() << dendl;
+        update_chunks[i->first].insert(i->second.first, i->second.second.length(), i->second.second);
+      }
+      for (unsigned int i = ecimpl->get_data_chunk_count(); i < ecimpl->get_chunk_count(); i++) {
+        ldpp_dout(dpp, 20) << __func__ << " id " << i << "tail chunk off " << sinfo.logical_to_prev_chunk_offset(tail_off)
+	                   << " len " << tmp_update_chunks_for_encode[i].length() << dendl;
+        update_chunks[i].insert(sinfo.logical_to_prev_chunk_offset(tail_off), tmp_update_chunks_for_encode[i].length(),
+			        tmp_update_chunks_for_encode[i]);
+      }
+    }
+  }
+}
+
+
+void encode_and_write_update(
+  pg_t pgid,
+  const hobject_t &oid,
+  const ECUtil::stripe_info_t &sinfo,
+  ErasureCodeInterfaceRef &ecimpl,
+  uint64_t offset,
+  bufferlist orig_bl,
+  bufferlist update_bl,
+  uint32_t flags,
+  ECUtil::HashInfoRef hinfo,
+  extent_map &written,
+  map<shard_id_t, ObjectStore::Transaction> *transactions,
+  DoutPrefixProvider *dpp) {
+  ceph_assert(orig_bl.length() == update_bl.length());
+  ceph_assert(orig_bl.length() % sinfo.get_chunk_unit_size() == 0);
+  ldpp_dout(dpp, 20) << __func__ << ": " << oid << " offset: " << offset << "len: " << orig_bl.length()
+	             << dendl;
+
+  map<int, bufferlist> buffers;
+  map<int, bufferlist> orig_chunks;
+  written.insert(offset, update_bl.length(), update_bl);
+  map<int, extent_map> update_chunks;
+ 
+  get_chunks_to_update(sinfo, ecimpl, dpp, offset, orig_bl, update_bl, update_chunks);
+  set<int> code_chunk;
+  for (unsigned int i = ecimpl->get_data_chunk_count(); i < ecimpl->get_chunk_count(); i++) {
+    code_chunk.insert(ecimpl->chunk_index(i));
+  }
+
+  for (auto i = transactions->begin(); i !=transactions->end();) {
+    if (!update_chunks.count((*i).first)) {
+	i++;
+	continue;
+    }
+    ceph_assert(update_chunks[(*i).first].ext_count() == 1);
+    const bufferlist &enc_bl = update_chunks[(*i).first].begin().get_val();
+    ldpp_dout(dpp, 20) << __func__ << " shard id:" <<(*i).first << dendl;
+
+    if (code_chunk.count((*i).first)) {
+      flags |= CEPH_OSD_OP_FLAG_FADVISE_UPDATE;
+    }
+    (*i).second.write(
+      coll_t(spg_t(pgid, (*i).first)),
+      ghobject_t(oid, ghobject_t::NO_GEN, (*i).first),
+      update_chunks[(*i).first].begin().get_off(),
+      enc_bl.length(),
+      enc_bl,
+      flags);
+      i++;
+  }
+  ldpp_dout(dpp,20) << __func__ << "trans size :" << transactions->size() << dendl;
+}
+  
 void encode_and_write(
   pg_t pgid,
   const hobject_t &oid,
@@ -34,6 +304,7 @@ void encode_and_write(
   ECUtil::HashInfoRef hinfo,
   extent_map &written,
   map<shard_id_t, ObjectStore::Transaction> *transactions,
+  map<int, std::pair<uint64_t, uint64_t>> &zero_map,
   DoutPrefixProvider *dpp) {
   const uint64_t before_size = hinfo->get_total_logical_size(sinfo);
   ceph_assert(sinfo.logical_offset_is_stripe_aligned(offset));
@@ -61,25 +332,106 @@ void encode_and_write(
 
   for (auto &&i : *transactions) {
     ceph_assert(buffers.count(i.first));
-    bufferlist &enc_bl = buffers[i.first];
-    if (offset >= before_size) {
-      i.second.set_alloc_hint(
-	coll_t(spg_t(pgid, i.first)),
+	bufferlist &enc_bl = buffers[i.first];
+	if (offset >= before_size) {
+	  i.second.set_alloc_hint(
+	coll_t(spg_t(pgid,i.first)),
 	ghobject_t(oid, ghobject_t::NO_GEN, i.first),
 	0, 0,
 	CEPH_OSD_ALLOC_HINT_FLAG_SEQUENTIAL_WRITE |
 	CEPH_OSD_ALLOC_HINT_FLAG_APPEND_ONLY);
+	}
+      if (zero_map.find(i.first) != zero_map.end()) {
+	uint64_t write_offset = sinfo.logical_to_prev_chunk_offset(offset);
+	uint64_t zero_offset = zero_map[i.first].first;
+	ldpp_dout(dpp,20) << __func__ << " zero_offset = " << zero_offset 
+			  << ", write_offset = " << write_offset << dendl;
+	if (write_offset < zero_offset) {
+	  bufferlist write_buf;
+	  uint64_t write_length = zero_offset - write_offset;
+	  write_buf.substr_of(enc_bl, 0, write_length);
+	  i.second.write(
+	    coll_t(spg_t(pgid,i.first)),
+	    ghobject_t(oid,ghobject_t::NO_GEN,i.first),
+	    write_offset,
+	    write_length,
+ 	    write_buf,
+	    flags);
+	  }
+	  i.second.zero(
+	  coll_t(spg_t(pgid,i.first)),
+	  ghobject_t(oid,ghobject_t::NO_GEN,i.first),
+	  zero_offset,
+	  zero_map[i.first].second);
+	} else {
+	  i.second.write(
+	  coll_t(spg_t(pgid,i.first)),
+  	  ghobject_t(oid,ghobject_t::NO_GEN,i.first),
+	  sinfo.logical_to_prev_chunk_offset(offset),
+	  enc_bl.length(),
+	  enc_bl,
+	  flags);
+	}
+      }
     }
-    i.second.write(
-      coll_t(spg_t(pgid, i.first)),
-      ghobject_t(oid, ghobject_t::NO_GEN, i.first),
-      sinfo.logical_to_prev_chunk_offset(
-	offset),
-      enc_bl.length(),
-      enc_bl,
-      flags);
-  }
-}
+
+void encode_and_write_append(
+	pg_t pgid,
+	const hobject_t &oid,
+	const ECUtil::stripe_info_t &sinfo,
+	ErasureCodeInterfaceRef &ecimpl,
+	const set<int> &want,
+	uint64_t offset,
+	bufferlist bl,
+	uint32_t flags,
+	ECUtil::HashInfoRef hinfo,
+	extent_map &written,
+	map<shard_id_t, ObjectStore::Transaction> *transactions,
+	set<shard_id_t> &write_sid,
+	DoutPrefixProvider *dpp) {
+	const uint64_t before_size = hinfo->get_total_logical_size(sinfo);
+	ceph_assert(sinfo.logical_offset_is_stripe_aligned(offset));
+	ceph_assert(sinfo.logical_offset_is_stripe_aligned(bl.length()));
+	ceph_assert(bl.length());
+
+	map<int, bufferlist> buffers;
+	int r = ECUtil::encode(
+	  sinfo, ecimpl, bl, want, &buffers);
+	ceph_assert(r ==0);
+	written.insert(offset, bl.length(), bl);
+
+	ldpp_dout(dpp, 20) << __func__ << ": " << oid << " new_size" 
+			   << offset + bl.length() << dendl;
+	if (offset >= before_size) {
+	  ceph_assert(offset == before_size);
+	hinfo->append(
+	      sinfo.aligned_logical_offset_to_chunk_offset(offset),
+	      buffers);
+	}
+	for (auto &&i : *transactions) {
+	  ceph_assert(buffers.count(i.first));
+	  if(write_sid.find(i.first) == write_sid.end()) {
+	    ldpp_dout(dpp, 20) << __func__ << ": transactions is continue write_sid=" <<write_sid << " i.first="<< i.first <<dendl;
+	    continue;
+	  }
+	bufferlist &enc_bl = buffers[i.first];
+	if (offset >= before_size) {
+	  i.second.set_alloc_hint(
+	coll_t(spg_t(pgid,i.first)),
+	ghobject_t(oid, ghobject_t::NO_GEN, i.first),
+	0, 0,
+	CEPH_OSD_ALLOC_HINT_FLAG_SEQUENTIAL_WRITE |
+	CEPH_OSD_ALLOC_HINT_FLAG_APPEND_ONLY);
+	}
+	  i.second.write(
+	  coll_t(spg_t(pgid,i.first)),
+  	  ghobject_t(oid,ghobject_t::NO_GEN,i.first),
+	  sinfo.logical_to_prev_chunk_offset(offset),
+	  enc_bl.length(),
+	  enc_bl,
+	  flags);
+	}
+      }
 
 bool ECTransaction::requires_overwrite(
   uint64_t prev_size,
@@ -103,9 +455,12 @@ void ECTransaction::generate_transactions(
   vector<pg_log_entry_t> &entries,
   map<hobject_t,extent_map> *written_map,
   map<shard_id_t, ObjectStore::Transaction> *transactions,
+  set<shard_id_t> &write_sid,
   set<hobject_t> *temp_added,
   set<hobject_t> *temp_removed,
-  DoutPrefixProvider *dpp)
+  DoutPrefixProvider *dpp,
+  bool &have_append,
+  bool osd_ec_zero_opt)  
 {
   ceph_assert(written_map);
   ceph_assert(transactions);
@@ -383,19 +738,20 @@ void ECTransaction::generate_transactions(
 	    op.alloc_hint->flags);
 	}
       }
-
+      bufferlist olddata;
       extent_map to_write;
       auto pextiter = partial_extents.find(oid);
       if (pextiter != partial_extents.end()) {
 	to_write = pextiter->second;
       }
-
+      ldpp_dout(dpp, 20) << __func__ << ": to_write " << to_write << dendl;	
       vector<pair<uint64_t, uint64_t> > rollback_extents;
       const uint64_t orig_size = hinfo->get_total_logical_size(sinfo);
 
       uint64_t new_size = orig_size;
       uint64_t append_after = new_size;
       ldpp_dout(dpp, 20) << __func__ << ": new_size start " << new_size << dendl;
+      map<int, std::pair<uint64_t, uint64_t>> zero_map;
       if (op.truncate && op.truncate->first < new_size) {
 	ceph_assert(!op.is_fresh_object());
 	new_size = sinfo.logical_to_next_stripe_offset(
@@ -458,7 +814,7 @@ void ECTransaction::generate_transactions(
 	    sinfo.aligned_logical_offset_to_chunk_offset(new_size));
 	}
       }
-
+      ldpp_dout(dpp, 20) << __func__ << ": to_write " << to_write << dendl;
       uint32_t fadvise_flags = 0;
       for (auto &&extent: op.buffer_updates) {
 	using BufferUpdate = PGTransaction::ObjectOperation::BufferUpdate;
@@ -483,6 +839,7 @@ void ECTransaction::generate_transactions(
 	uint64_t end = off + len;
 	ldpp_dout(dpp, 20) << __func__ << ": adding buffer_update "
 			   << make_pair(off, len)
+			   << " bl length: " << bl.length()
 			   << dendl;
 	ceph_assert(len > 0);
 	if (off > new_size) {
@@ -495,9 +852,14 @@ void ECTransaction::generate_transactions(
 	  off = new_size;
 	}
 	if (!sinfo.logical_offset_is_stripe_aligned(end) && (end > append_after)) {
-	  uint64_t aligned_end = sinfo.logical_to_next_stripe_offset(
-	    end);
+	  uint64_t aligned_end = sinfo.logical_to_next_stripe_offset(end);
 	  uint64_t tail = aligned_end - end;
+	  if (osd_ec_zero_opt && append_after < aligned_end) {
+	   HiEcInfo ec_info(ecimpl->get_data_chunk_count(),ecimpl->get_chunk_count(),
+			    ecimpl->get_chunk_mapping(), sinfo.get_chunk_size(),\
+			    sinfo.get_stripe_width(),sinfo.get_chunk_unit_size());
+	   HiGetShardZeroRange(std::pair(append_after, end - append_after), ec_info, zero_map);
+	  }
 	  bl.append_zero(tail);
 	  ldpp_dout(dpp, 20) << __func__ << ": appending zeroes to align end "
 			     << end << "->" << end+tail
@@ -506,12 +868,22 @@ void ECTransaction::generate_transactions(
 	  end += tail;
 	  len += tail;
 	}
-
+        ldpp_dout(dpp, 20) << __func__ << ": adding buffer_update " <<dendl;
+	if (write_sid.empty()) {
+	  pair<uint64_t,uint64_t> tmp = sinfo.offset_len_to_chunk_unit_bounds(make_pair(off, len));
+	  auto range = to_write.get_containing_range(tmp.first, tmp.second);
+	  ldpp_dout(dpp, 20) << __func__ << "chunk aligned off" << tmp.first << " len " << tmp.second
+ 	    <<" range len " << range.first.get_val().length() << dendl;
+	    olddata.substr_of(range.first.get_val(), tmp.first - range.first.get_off(), tmp.second);
+	}
+	ldpp_dout(dpp, 20) << __func__ <<": adding buffer_update "<<dendl;
+	ldpp_dout(dpp, 20) << __func__ <<": to_write= " << to_write<< "off=" <<off <<" len=" <<len<< " bl="<<bl<<dendl;
 	to_write.insert(off, len, bl);
+	ldpp_dout(dpp, 20) << __func__ <<": after insert to_write= " << to_write<< " bl="<<bl<<dendl;
 	if (end > new_size)
 	  new_size = end;
       }
-
+	ldpp_dout(dpp, 20) << __func__ <<": to_write " << to_write<<dendl;
       if (op.truncate &&
 	  op.truncate->second > new_size) {
 	ceph_assert(op.truncate->second > append_after);
@@ -540,15 +912,22 @@ void ECTransaction::generate_transactions(
 			 << to_overwrite
 			 << dendl;
       for (auto &&extent: to_overwrite) {
-	ceph_assert(extent.get_off() + extent.get_len() <= append_after);
-	ceph_assert(sinfo.logical_offset_is_stripe_aligned(extent.get_off()));
-	ceph_assert(sinfo.logical_offset_is_stripe_aligned(extent.get_len()));
+	uint64_t off = extent.get_off();
+	uint64_t len = extent.get_len();
+	if (write_sid.empty()) {
+	  pair<uint64_t, uint64_t> tmp = sinfo.offset_len_to_stripe_bounds(make_pair(off,len));
+	  off = tmp.first;
+	  len = tmp.second;
+	}
+	ceph_assert(off + len <= append_after);
+	ceph_assert(sinfo.logical_offset_is_stripe_aligned(off));
+	ceph_assert(sinfo.logical_offset_is_stripe_aligned(len));
 	if (entry) {
 	  uint64_t restore_from = sinfo.aligned_logical_offset_to_chunk_offset(
-	    extent.get_off());
+	    off);
 	  uint64_t restore_len = sinfo.aligned_logical_offset_to_chunk_offset(
-	    extent.get_len());
-	  ldpp_dout(dpp, 20) << __func__ << ": overwriting "
+	    len);
+	  ldpp_dout(dpp, 20) << __func__ << ": overwriting section"
 			     << restore_from << "~" << restore_len
 			     << dendl;
 	  if (rollback_extents.empty()) {
@@ -569,7 +948,9 @@ void ECTransaction::generate_transactions(
 	      restore_from);
 	  }
 	}
-	encode_and_write(
+	ldpp_dout(dpp, 20) << __func__ << " before encode and write write_sid:" << write_sid << dendl;
+	if (!write_sid.empty()) {
+	encode_and_write_append(
 	  pgid,
 	  oid,
 	  sinfo,
@@ -581,9 +962,24 @@ void ECTransaction::generate_transactions(
 	  hinfo,
 	  written,
 	  transactions,
+	  write_sid,
 	  dpp);
+	} else {
+          encode_and_write_update(
+	  pgid,
+	  oid,
+	  sinfo,
+	  ecimpl,
+	  extent.get_off(),
+	  olddata,
+	  extent.get_val(),
+	  fadvise_flags,
+	  hinfo,
+	  written,
+	  transactions,
+	  dpp);
+	}
       }
-
       auto to_append = to_write.intersect(
 	append_after,
 	std::numeric_limits<uint64_t>::max() - append_after);
@@ -593,7 +989,7 @@ void ECTransaction::generate_transactions(
       for (auto &&extent: to_append) {
 	ceph_assert(sinfo.logical_offset_is_stripe_aligned(extent.get_off()));
 	ceph_assert(sinfo.logical_offset_is_stripe_aligned(extent.get_len()));
-	ldpp_dout(dpp, 20) << __func__ << ": appending "
+	ldpp_dout(dpp, 20) << __func__ << ": appending section "
 			   << extent.get_off() << "~" << extent.get_len()
 			   << dendl;
 	encode_and_write(
@@ -608,6 +1004,7 @@ void ECTransaction::generate_transactions(
 	  hinfo,
 	  written,
 	  transactions,
+	  zero_map,
 	  dpp);
       }
 
@@ -635,6 +1032,7 @@ void ECTransaction::generate_transactions(
 			   << append_after
 			   << dendl;
 	entry->mod_desc.append(append_after);
+	have_append = true;
       }
 
       if (!op.is_delete()) {

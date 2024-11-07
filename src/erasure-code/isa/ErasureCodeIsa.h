@@ -74,11 +74,14 @@ public:
   unsigned int get_chunk_size(unsigned int object_size) const override;
 
   int encode_chunks(const std::set<int> &want_to_encode,
-                            std::map<int, bufferlist> *encoded) override;
+                    std::map<int, bufferlist> *encoded) override;
+
+  int encode_update(std::map<int, bufferlist> *encoded,
+                    std::map<int, bufferlist> *chunks_new) override;
 
   int decode_chunks(const std::set<int> &want_to_read,
-                            const std::map<int, bufferlist> &chunks,
-                            std::map<int, bufferlist> *decoded) override;
+                    const std::map<int, bufferlist> &chunks,
+                    std::map<int, bufferlist> *decoded) override;
 
   int init(ErasureCodeProfile &profile, std::ostream *ss) override;
 
@@ -86,6 +89,11 @@ public:
                           char **coding,
                           int blocksize) = 0;
 
+  virtual void isa_encode_update(const char* chunk_new, const char* chunk_old,
+		  		 const int i, const int blocksize,
+				 char** coding) = 0;
+
+  virtual bool is_support_ec_update() override;
 
   virtual int isa_decode(int *erasures,
                          char **data,
@@ -133,6 +141,10 @@ public:
   void isa_encode(char **data,
                           char **coding,
                           int blocksize) override;
+
+  void isa_encode_update(const char* chunk_new, const char* chunk_old,
+		  		 const int i, const int blocksize,
+				 char** coding) override;
 
   virtual bool erasure_contains(int *erasures, int i);
 

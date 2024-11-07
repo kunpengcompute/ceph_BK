@@ -8,6 +8,7 @@
 #include "include/rbd_types.h"
 #include "include/Context.h"
 #include "common/zipkin_trace.h"
+#include "common/RefCountedObj.h"
 
 #include <atomic>
 #include <type_traits>
@@ -57,6 +58,23 @@ protected:
   }
 };
 
+template <typename T, void (T::*MF)(int)>
+class C_RefCallbackAdapter : public Context {
+  RefCountedPtr refptr;
+  Context *on_finish;
+
+public:
+  C_RefCallbackAdapter(T *obj, RefCountedPtr refptr)
+    : refptr(std::move(refptr)),
+      on_finish(new C_CallbackAdapter<T, MF>(obj)) {
+  }
+
+protected:
+  void finish(int r) override {
+    on_finish->complete(r);
+  }
+};
+
 template <typename T, Context*(T::*MF)(int*), bool destroy>
 class C_StateCallbackAdapter : public Context {
   T *obj;
@@ -76,6 +94,23 @@ protected:
     Context::complete(r);
   }
   void finish(int r) override {
+  }
+};
+
+template <typename T, Context*(T::*MF)(int*)>
+class C_RefStateCallbackAdapter : public Context {
+  RefCountedPtr refptr;
+  Context *on_finish;
+
+public:
+  C_RefStateCallbackAdapter(T *obj, RefCountedPtr refptr)
+    : refptr(std::move(refptr)),
+      on_finish(new C_StateCallbackAdapter<T, MF, true>(obj)) {
+  }
+
+protected:
+  void finish(int r) override {
+    on_finish->complete(r);
   }
 };
 
@@ -137,6 +172,30 @@ Context *create_context_callback(T *obj) {
   return new detail::C_StateCallbackAdapter<T, MF, destroy>(obj);
 }
 
+//for reference counting objects
+template <typename T, void(T::*MF)(int) = &T::complete>
+Context *create_context_callback(T *obj, RefCountedPtr refptr) {
+  return new detail::C_RefCallbackAdapter<T, MF>(obj, refptr);
+}
+
+template <typename T, Context*(T::*MF)(int*)>
+Context *create_context_callback(T *obj, RefCountedPtr refptr) {
+  return new detail::C_RefStateCallbackAdapter<T, MF>(obj, refptr);
+}
+
+//for objects that don't inherit from RefCountedObj, to handle unit tests
+template <typename T, void(T::*MF)(int) = &T::complete, typename R>
+typename std::enable_if<not std::is_base_of<RefCountedPtr, R>::value, Context*>::type
+create_context_callback(T *obj, R *refptr) {
+  return new detail::C_CallbackAdapter<T, MF>(obj);
+}
+
+template <typename T, Context*(T::*MF)(int*), typename R, bool destroy=true>
+typename std::enable_if<not std::is_base_of<RefCountedPtr, R>::value, Context*>::type
+create_context_callback(T *obj, R *refptr) {
+  return new detail::C_StateCallbackAdapter<T, MF, destroy>(obj);
+}
+
 template <typename I>
 Context *create_async_context_callback(I &image_ctx, Context *on_finish) {
   // use async callback to acquire a clean lock context
@@ -155,39 +214,6 @@ Context *create_async_context_callback(WQ *work_queue, Context *on_finish) {
 inline ImageCtx *get_image_ctx(ImageCtx *image_ctx) {
   return image_ctx;
 }
-
-/// helper for tracking in-flight async ops when coordinating
-/// a shut down of the invoking class instance
-class AsyncOpTracker {
-public:
-  void start_op() {
-    m_refs++;
-  }
-
-  void finish_op() {
-    if (--m_refs == 0 && m_on_finish != nullptr) {
-      Context *on_finish = nullptr;
-      std::swap(on_finish, m_on_finish);
-      on_finish->complete(0);
-    }
-  }
-
-  template <typename I>
-  void wait(I &image_ctx, Context *on_finish) {
-    ceph_assert(m_on_finish == nullptr);
-
-    on_finish = create_async_context_callback(image_ctx, on_finish);
-    if (m_refs == 0) {
-      on_finish->complete(0);
-      return;
-    }
-    m_on_finish = on_finish;
-  }
-
-private:
-  std::atomic<uint64_t> m_refs = { 0 };
-  Context *m_on_finish = nullptr;
-};
 
 uint64_t get_rbd_default_features(CephContext* cct);
 

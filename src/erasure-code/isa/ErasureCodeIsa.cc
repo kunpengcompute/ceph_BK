@@ -89,6 +89,40 @@ int ErasureCodeIsa::encode_chunks(const set<int> &want_to_encode,
   return 0;
 }
 
+int ErasureCodeIsa::encode_update(map<int, bufferlist> *encoded,
+				  map<int, bufferlist> *chunks_new)
+{
+  char *coding[m];
+  ceph_assert(!encoded->empty());
+  int len = (*encoded).begin()->second.length();
+  for (int i = 0; i < m; i++) {
+    bufferlist parity;
+    if (encoded->count(k+i)) {
+      parity.claim((*encoded)[k+i]);
+    } else {
+      parity.append_zero(len);
+    }
+    (*chunks_new)[k+i] = parity;
+    coding[i] = (*chunks_new)[k+i].c_str();
+  }
+
+
+  for (auto &e : *chunks_new) {
+    int i = e.first;
+    if (i < k) {
+      isa_encode_update((*chunks_new)[i].c_str(), (*encoded)[i].c_str(), i , len,
+			&coding[0]);
+    }
+  }
+
+  return 0;
+}
+
+bool ErasureCodeIsa::is_support_ec_update()
+{
+  return true;
+}
+
 int ErasureCodeIsa::decode_chunks(const set<int> &want_to_read,
                                   const map<int, bufferlist> &chunks,
                                   map<int, bufferlist> *decoded)
@@ -120,7 +154,6 @@ ErasureCodeIsaDefault::isa_encode(char **data,
                                   char **coding,
                                   int blocksize)
 {
-
   if (m == 1)
     // single parity stripe
     region_xor((unsigned char**) data, (unsigned char*) coding[0], k, blocksize);
@@ -128,6 +161,29 @@ ErasureCodeIsaDefault::isa_encode(char **data,
     ec_encode_data(blocksize, k, m, encode_tbls,
                    (unsigned char**) data, (unsigned char**) coding);
 }
+
+// -----------------------------------------------------------------------------
+
+// -----------------------------------------------------------------------------
+
+void
+ErasureCodeIsaDefault::isa_encode_update(const char* chunk_new,
+					 const char* chunk_old, const int i,
+					 const int blocksize, char** coding)
+{
+  const char* mix[] = {chunk_new, chunk_old};
+  string xor_ret;
+
+  xor_ret.resize(blocksize);
+  region_xor((unsigned char**)mix, (unsigned char*)xor_ret.c_str(), 2,
+	     blocksize);
+  ec_encode_data_update(blocksize, k, m, i, encode_tbls,
+		  	(unsigned char*)xor_ret.c_str(),
+			(unsigned char**)coding);
+}
+
+// -----------------------------------------------------------------------------
+
 
 // -----------------------------------------------------------------------------
 
@@ -142,7 +198,6 @@ ErasureCodeIsaDefault::erasure_contains(int *erasures, int i)
 }
 
 // -----------------------------------------------------------------------------
-
 
 
 // -----------------------------------------------------------------------------

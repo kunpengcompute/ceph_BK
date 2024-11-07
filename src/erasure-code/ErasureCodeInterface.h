@@ -370,6 +370,9 @@ namespace ceph {
     virtual int encode_chunks(const std::set<int> &want_to_encode,
                               std::map<int, bufferlist> *encoded) = 0;
 
+    virtual int encode_update(std::map<int, bufferlist> *encoded,
+                              std::map<int, bufferlist> *chunks_new) = 0;
+    virtual bool is_support_ec_update() = 0;
     /**
      * Decode the **chunks** and store at least **want_to_read**
      * chunks in **decoded**.
@@ -459,6 +462,7 @@ namespace ceph {
      */
     virtual int decode_concat(const std::map<int, bufferlist> &chunks,
 			      bufferlist *decoded) = 0;
+    virtual int chunk_index(unsigned int i) const = 0;
   };
 
   typedef std::shared_ptr<ErasureCodeInterface> ErasureCodeInterfaceRef;

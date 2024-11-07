@@ -136,7 +136,7 @@ public:
 
   // compat hack
   ConnectionRef connect_to(
-    int type, const entity_addrvec_t& dest) override {
+    int type, const entity_addrvec_t& dest, bool not_local_dest=false) override {
     return get_connection(entity_inst_t(entity_name_t(type, -1),
 					dest.legacy_addr()));
   }

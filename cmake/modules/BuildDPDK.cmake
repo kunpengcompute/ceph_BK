@@ -58,19 +58,6 @@ function(do_build_dpdk dpdk_dir)
 
   set(target "${arch}-${machine_tmpl}-${execenv}-${toolchain}")
 
-  execute_process(
-    COMMAND ${CMAKE_MAKE_PROGRAM} showconfigs
-    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/src/spdk/dpdk
-    OUTPUT_VARIABLE supported_targets
-    OUTPUT_STRIP_TRAILING_WHITESPACE)
-  string(REPLACE "\n" ";" supported_targets "${supported_targets}")
-  list(FIND supported_targets ${target} found)
-  if(found EQUAL -1)
-    message(FATAL_ERROR "not able to build DPDK support: "
-      "unsupported target. "
-      "\"${target}\" not listed in ${supported_targets}")
-  endif()
-
   set(EXTRA_CFLAGS "-Wno-unknown-warning-option -Wno-stringop-truncation -Wno-address-of-packed-member -fPIC")
 
   include(ExternalProject)
@@ -80,8 +67,9 @@ function(do_build_dpdk dpdk_dir)
     BUILD_COMMAND env CC=${CMAKE_C_COMPILER} $(MAKE) O=${dpdk_dir} EXTRA_CFLAGS=${EXTRA_CFLAGS}
     BUILD_IN_SOURCE 1
     INSTALL_COMMAND "true")
+  set(numa "y")
   ExternalProject_Add_Step(dpdk-ext patch-config
-    COMMAND ${CMAKE_MODULE_PATH}/patch-dpdk-conf.sh ${dpdk_dir} ${machine} ${arch}
+    COMMAND ${CMAKE_MODULE_PATH}/patch-dpdk-conf.sh ${dpdk_dir} ${machine} ${arch} ${numa}
     DEPENDEES configure
     DEPENDERS build)
   # easier to adjust the config
@@ -112,7 +100,8 @@ function(build_dpdk dpdk_dir)
       mempool
       mempool_ring
       pci
-      ring)
+      ring
+      net)
     add_library(dpdk::${c} STATIC IMPORTED)
     add_dependencies(dpdk::${c} dpdk-ext)
     set(dpdk_${c}_LIBRARY
@@ -125,6 +114,7 @@ function(build_dpdk dpdk_dir)
     list(APPEND DPDK_ARCHIVES "${dpdk_${c}_LIBRARY}")
   endforeach()
 
+  set(dpdk_numa " -Wl,-lnuma")
   add_library(dpdk::dpdk INTERFACE IMPORTED)
   add_dependencies(dpdk::dpdk
     ${DPDK_LIBRARIES})
@@ -132,7 +122,8 @@ function(build_dpdk dpdk_dir)
   set_target_properties(dpdk::dpdk PROPERTIES
     INTERFACE_INCLUDE_DIRECTORIES ${DPDK_INCLUDE_DIR}
     INTERFACE_LINK_LIBRARIES
-    "-Wl,--whole-archive $<JOIN:${DPDK_ARCHIVES}, > -Wl,--no-whole-archive")
+    "-Wl,--whole-archive $<JOIN:${DPDK_ARCHIVES}, > -Wl,--no-whole-archive ${dpdk_numa} -Wl,-lpthread,-ldl")
+
   if(dpdk_rte_CFLAGS)
     set_target_properties(dpdk::dpdk PROPERTIES
       INTERFACE_COMPILE_OPTIONS "${dpdk_rte_CFLAGS}")

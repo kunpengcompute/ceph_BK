@@ -15,7 +15,7 @@
 #include <stdio.h>
 #include <string.h>
 #include "arch/intel.h"
-
+#include "arch/arm.h"
 #include "include/ceph_assert.h"
 
 // -----------------------------------------------------------------------------
@@ -101,6 +101,14 @@ region_xor(unsigned char** src,
       // 64-byte region xor
       region_sse2_xor((char**) src, (char*) parity, src_size, region_size);
     } else
+#elif defined __aarch64__
+   if (ceph_arch_neon) {
+      unsigned region_size =
+	(size / EC_ISA_VECTOR_NEON_WORDSIZE) * EC_ISA_VECTOR_NEON_WORDSIZE;
+
+      size_left -= region_size;
+      region_neon_xor((char**) src, (char*) parity, src_size, region_size);
+   } else
 #endif
     {
       // --------------------------------------------
@@ -179,5 +187,45 @@ region_sse2_xor(char** src,
 
   asm volatile("sfence" : : : "memory");
 #endif // __x86_64__
+  return;
+}
+void
+region_neon_xor(char** src,
+		char* parity,
+		int src_size,
+		unsigned size)
+{
+#ifdef __aarch64__
+  ceph_assert(!(size % EC_ISA_VECTOR_NEON_WORDSIZE));
+  unsigned char* volatile p;
+  int d, l;
+  unsigned i;
+  unsigned char* vbuf[256];
+
+  for (int v = 0; v < src_size; v++) {
+    vbuf[v] = (unsigned char*)src[v];
+  }
+
+  l = src_size;
+  p = (unsigned char*) parity;
+
+  for (i = 0 ; i < size; i += EC_ISA_VECTOR_NEON_WORDSIZE) {
+    __asm__ __volatile__("ldp q0, q1, [%x[v]]"::[v]"r"(&vbuf[0][i]));
+    __asm__ __volatile__("ldp q2, q3, [%x[v], #32]"::[v]"r"(&vbuf[0][i]));
+
+    for (d = 1; d < l; d++) {
+    __asm__ __volatile__("ldp q4, q5, [%x[v]]"::[v]"r"(&vbuf[d][i]));
+    __asm__ __volatile__("ldp q6, q7, [%x[v], #32]"::[v]"r"(&vbuf[d][i]));
+
+    __asm__ __volatile__("eor v0.16b, v4.16b, v0.16b");
+    __asm__ __volatile__("eor v1.16b, v5.16b, v1.16b");
+    __asm__ __volatile__("eor v2.16b, v6.16b, v2.16b");
+    __asm__ __volatile__("eor v3.16b, v7.16b, v3.16b");
+    }
+    __asm__ __volatile__("stp q0, q1, [%x[p]]"::[p]"r"(&p[i]));
+    __asm__ __volatile__("stp q2, q3, [%x[p], #32]"::[p]"r"(&p[i]));
+  }
+  __asm__ __volatile__("" : : : "memory");
+#endif // __aarch64__
   return;
 }

@@ -104,7 +104,13 @@ Allocator *Allocator::create(CephContext* cct, string type,
   if (type == "stupid") {
     alloc = new StupidAllocator(cct, name);
   } else if (type == "bitmap") {
+#ifdef KPS_ALLOCATOR
+    KpsAllocPos pos = {0};
+    alloc = new BitmapAllocator(cct, size, block_size, name, pos,
+      cct->_conf.get_val<bool>("bluestore_kpsallocator_enable"));
+#else
     alloc = new BitmapAllocator(cct, size, block_size, name);
+#endif
   }
   if (alloc == nullptr) {
     lderr(cct) << "Allocator::" << __func__ << " unknown alloc type "

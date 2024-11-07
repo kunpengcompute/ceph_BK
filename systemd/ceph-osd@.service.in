@@ -1,32 +1,36 @@
 [Unit]
 Description=Ceph object storage daemon osd.%i
-After=network-online.target local-fs.target time-sync.target ceph-mon.target
+After=network-online.target local-fs.target time-sync.target ceph-mon.target spdk-conf.target
 Wants=network-online.target local-fs.target time-sync.target
 PartOf=ceph-osd.target
-
+ 
 [Service]
+User=ceph
+Group=ceph
+ 
 LimitNOFILE=1048576
 LimitNPROC=1048576
-EnvironmentFile=-@SYSTEMD_ENV_FILE@
+LimitMEMLOCK=infinity
+EnvironmentFile=-/etc/sysconfig/ceph
 Environment=CLUSTER=ceph
 ExecStart=/usr/bin/ceph-osd -f --cluster ${CLUSTER} --id %i --setuser ceph --setgroup ceph
 ExecStartPre=/usr/lib/ceph/ceph-osd-prestart.sh --cluster ${CLUSTER} --id %i
 ExecReload=/bin/kill -HUP $MAINPID
-LockPersonality=true
-MemoryDenyWriteExecute=true
+#LockPersonality=true
+#MemoryDenyWriteExecute=true
 # Need NewPrivileges via `sudo smartctl`
 NoNewPrivileges=false
 ProtectControlGroups=true
 ProtectHome=true
-ProtectKernelModules=true
+#ProtectKernelModules=true
 # flushing filestore requires access to /proc/sys/vm/drop_caches
-ProtectKernelTunables=false
-ProtectSystem=full
-PrivateTmp=true
-TasksMax=infinity
+#ProtectKernelTunables=false
+#ProtectSystem=full
+#PrivateTmp=true
+#TasksMax=infinity
 Restart=on-failure
 StartLimitInterval=30min
 StartLimitBurst=3
-
+ 
 [Install]
 WantedBy=ceph-osd.target

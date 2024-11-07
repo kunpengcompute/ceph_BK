@@ -19,6 +19,7 @@
 # include "crush_compat.h"
 #endif
 
+extern void crush_init_lntable();
 /*
  * RH_LH_tbl[2*k] = 2^48/(1.0+k/128.0)
  * RH_LH_tbl[2*k+1] = 2^48*log2(1.0+k/128.0)

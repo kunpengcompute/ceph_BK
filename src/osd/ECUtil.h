@@ -22,19 +22,27 @@
 #include "include/encoding.h"
 #include "common/Formatter.h"
 
+namespace {
+const uint64_t MAX_CHUNK_END = (1ULL << 40);
+}
 namespace ECUtil {
 
 class stripe_info_t {
   const uint64_t stripe_width;
   const uint64_t chunk_size;
+  const uint64_t chunk_unit_size;
 public:
   stripe_info_t(uint64_t stripe_size, uint64_t stripe_width)
     : stripe_width(stripe_width),
-      chunk_size(stripe_width / stripe_size) {
+      chunk_size(stripe_width / stripe_size),
+      chunk_unit_size(4096) {
     ceph_assert(stripe_width % stripe_size == 0);
   }
   bool logical_offset_is_stripe_aligned(uint64_t logical) const {
     return (logical % stripe_width) == 0;
+  }
+  bool logical_offset_is_chunk_aligned(uint64_t logical) const {
+    return (logical % chunk_size) == 0;
   }
   uint64_t get_stripe_width() const {
     return stripe_width;
@@ -42,12 +50,74 @@ public:
   uint64_t get_chunk_size() const {
     return chunk_size;
   }
+  uint64_t get_chunk_unit_size() const {
+    return chunk_unit_size;
+  }
   uint64_t logical_to_prev_chunk_offset(uint64_t offset) const {
     return (offset / stripe_width) * chunk_size;
   }
   uint64_t logical_to_next_chunk_offset(uint64_t offset) const {
     return ((offset + stripe_width - 1)/ stripe_width) * chunk_size;
   }
+
+  uint64_t prev_chunk_begin(uint64_t offset) const {
+    if(offset) {
+      return ((offset % chunk_size) ?
+	(offset - (offset % chunk_size)) :
+	offset);
+    }
+    return offset;
+   }
+
+  uint64_t prev_chunk_begin_nozero(uint64_t offset) const {
+   return ((offset % chunk_size) ?
+        (offset- (offset % chunk_size)) :
+        offset);
+  } 
+
+  uint64_t prev_chunk_end(uint64_t offset) const {
+    if(offset) {
+      return ((offset % chunk_size) ?
+        (offset- (offset % chunk_size) + chunk_size) :
+   offset + chunk_size);
+    }
+    return chunk_size;
+  }
+
+  uint64_t next_chunk_begin(uint64_t offset) const {
+    if(offset) {
+      return ((offset % chunk_size)?  
+   (offset- (offset % chunk_size)) :
+   offset - chunk_size);
+    }
+    return offset;
+  }
+
+  uint64_t next_chunk_end(uint64_t offset) const {
+    if(offset) {
+      return ((offset % chunk_size)?
+      (offset- (offset % chunk_size) + chunk_size) :
+   offset);
+    }
+    return chunk_size;
+  }  
+
+  uint64_t next_chunk_end_nozero(uint64_t offset) const {
+    return ((offset % chunk_size)?
+       (offset- (offset % chunk_size) + chunk_size) :
+       offset);
+  }
+
+  uint64_t logical_to_prev_chunk_offset_2(uint64_t offset) const {
+    return offset- (offset % chunk_size);
+  }
+
+  uint64_t logical_to_next_chunk_offset_2(uint64_t offset) const {
+    return ((offset % chunk_size) ?
+      (offset - (offset % chunk_size) + chunk_size) :
+      offset);
+  }
+  
   uint64_t logical_to_prev_stripe_offset(uint64_t offset) const {
     return offset - (offset % stripe_width);
   }
@@ -77,6 +147,49 @@ public:
       (in.first - off) + in.second);
     return std::make_pair(off, len);
   }
+  uint64_t logical_to_prev_chunk(uint64_t offset) const {
+    return offset - (offset % chunk_size);
+  }
+
+  uint64_t logical_to_next_chunk(uint64_t offset) const {
+   if (offset > MAX_CHUNK_END || chunk_size > MAX_CHUNK_END) {
+	return MAX_CHUNK_END;
+    }
+    uint64_t ret = offset % MAX_CHUNK_END;
+    uint64_t redundant = offset % chunk_size;
+    if (redundant != 0) {
+	if (offset - redundant + chunk_size < MAX_CHUNK_END) {
+	    ret = offset - redundant + chunk_size;
+	} else  {
+	    ret = MAX_CHUNK_END;
+	}
+    }
+    return ret;
+  }
+  std::pair<uint64_t, uint64_t> offset_len_to_chunk_bounds(
+    std::pair<uint64_t,uint64_t> in ) const {
+    uint64_t off = logical_to_prev_chunk(in.first);
+    uint64_t len = logical_to_next_chunk(
+      (in.first - off) + in.second);
+    return std::make_pair(off, len);
+  }
+  uint64_t logical_to_prev_chunk_unit(uint64_t offset) const {
+    return offset - (offset % chunk_unit_size);
+  }
+
+  uint64_t logical_to_next_chunk_unit(uint64_t offset) const {
+    return ((offset % chunk_unit_size) ?
+      (offset - (offset % chunk_unit_size) + chunk_unit_size) : offset);
+  }
+  std::pair<uint64_t, uint64_t> offset_len_to_chunk_unit_bounds(
+    std::pair<uint64_t, uint64_t> in) const {
+    uint64_t off = logical_to_prev_chunk_unit(in.first);
+    uint64_t len = logical_to_next_chunk_unit((in.first - off) + in.second);
+    return std::make_pair(off,len);
+  }
+  uint64_t logical_offset_to_chunk_unit_offset(uint64_t offset) const {
+    return (offset / stripe_width) * chunk_size + offset % chunk_size;
+  }
 };
 
 int decode(
@@ -90,6 +203,15 @@ int decode(
   ErasureCodeInterfaceRef &ec_impl,
   std::map<int, bufferlist> &to_decode,
   std::map<int, bufferlist*> &out);
+
+bool should_use_update(const stripe_info_t &sinfo,
+  ErasureCodeInterfaceRef &ec_impl,
+  const std::pair<uint64_t, uint64_t> &range);
+int encode_update(
+  const stripe_info_t &sinfo,
+  ErasureCodeInterfaceRef &ec_impl,
+  std::map<int, bufferlist> &olddata,
+  std::map<int, bufferlist> &newdata);
 
 int encode(
   const stripe_info_t &sinfo,

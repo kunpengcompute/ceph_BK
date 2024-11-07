@@ -11,13 +11,20 @@
 #include "fastbmap_allocator_impl.h"
 #include "include/mempool.h"
 #include "common/debug.h"
+#ifdef KPS_ALLOCATOR
+#include "kps_bluestore.h"
+#endif
 
 class BitmapAllocator : public Allocator,
   public AllocatorLevel02<AllocatorLevel01Loose> {
   CephContext* cct;
 
 public:
+#ifdef KPS_ALLOCATOR
+  BitmapAllocator(CephContext* _cct, int64_t capacity, int64_t alloc_unit, const std::string& name, KpsAllocPos pos, bool enable_kps_allocator);
+#else
   BitmapAllocator(CephContext* _cct, int64_t capacity, int64_t alloc_unit, const std::string& name);
+#endif
   ~BitmapAllocator() override
   {
   }

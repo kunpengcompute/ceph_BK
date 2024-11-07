@@ -27,6 +27,9 @@ public:
 class TestAllocatorLevel02 : public AllocatorLevel02<AllocatorLevel01Loose>
 {
 public:
+#ifdef KPS_ALLOCATOR
+  TestAllocatorLevel02(size_t slots_per_slotset, uint64_t alloc_unit, KpsAllocPos pos, bool kps_allocator_enable):AllocatorLevel02(slots_per_slotset, alloc_unit, pos, kps_allocator_enable) {}
+#endif
   void init(uint64_t capacity, uint64_t alloc_unit)
   {
     _init(capacity, alloc_unit);
@@ -51,6 +54,7 @@ const uint64_t _2m = 2 * 1024 * 1024;
 
 TEST(TestAllocatorLevel01, test_l1)
 {
+#ifndef KPS_ALLOCATOR
   TestAllocatorLevel01 al1;
   uint64_t num_l1_entries = 3 * 256;
   uint64_t capacity = num_l1_entries * 512 * 4096;
@@ -234,13 +238,18 @@ TEST(TestAllocatorLevel01, test_l1)
   i3 = al1.allocate_l1_cont(0x6000, 0x1000, 0, num_l1_entries);
   ASSERT_EQ(i3.length, 0x2000u);
   ASSERT_EQ(0u, al1.debug_get_free());
-
+#endif
+  
   std::cout << "Done L1" << std::endl;
 }
 
 TEST(TestAllocatorLevel01, test_l2)
 {
+#ifdef KPS_ALLOCATOR
+  TestAllocatorLevel02 al2(slots_per_slotset, 4096, {0}, true);
+#else
   TestAllocatorLevel02 al2;
+#endif
   uint64_t num_l2_entries = 64;// *512;
   uint64_t capacity = num_l2_entries * 256 * 512 * 4096;
   al2.init(capacity, 0x1000);
@@ -316,7 +325,12 @@ TEST(TestAllocatorLevel01, test_l2)
   al2.free_l2(a3);
 
 #ifndef _DEBUG
-  for (uint64_t i = 0; i < capacity; i += 0x1000) {
+#ifdef KPS_ALLOCATOR
+  uint64_t i = 0x5000;
+#else
+  uint64_t i= 0;
+#endif
+  for (; i < capacity; i += 0x1000) {
     uint64_t allocated4 = 0;
     interval_vector_t a4;
     al2.allocate_l2(0x1000, 0x1000, &allocated4, &a4);
@@ -343,7 +357,11 @@ TEST(TestAllocatorLevel01, test_l2)
   }
 #endif
 
+#ifdef KPS_ALLOCATOR
+  ASSERT_EQ(0x5000u, al2.debug_get_free());
+#else
   ASSERT_EQ(0u, al2.debug_get_free());
+#endif
   for (uint64_t i = 0; i < capacity; i += _1m) {
     interval_vector_t r;
     r.emplace_back(i, _1m);
@@ -411,7 +429,11 @@ TEST(TestAllocatorLevel01, test_l2)
 
 TEST(TestAllocatorLevel01, test_l2_huge)
 {
+#ifdef KPS_ALLOCATOR
+  TestAllocatorLevel02 al2(slots_per_slotset, 4096, {0}, true);
+#else
   TestAllocatorLevel02 al2;
+#endif
   uint64_t num_l2_entries = 4 * 512;
   uint64_t capacity = num_l2_entries * 256 * 512 * 4096; // 1 TB
   al2.init(capacity, 0x1000);
@@ -478,7 +500,11 @@ TEST(TestAllocatorLevel01, test_l2_huge)
 TEST(TestAllocatorLevel01, test_l2_unaligned)
 {
   {
+#ifdef KPS_ALLOCATOR
+    TestAllocatorLevel02 al2(slots_per_slotset,4096,{0},true);
+#else
     TestAllocatorLevel02 al2;
+#endif
     uint64_t num_l2_entries = 3;
     uint64_t capacity = num_l2_entries * 256 * 512 * 4096; // 3x512 MB
     al2.init(capacity, 0x1000);
@@ -507,7 +533,11 @@ TEST(TestAllocatorLevel01, test_l2_unaligned)
     }
   }
   {
+#ifdef KPS_ALLOCATOR
+    TestAllocatorLevel02 al2(slots_per_slotset, 4096, {0}, true);
+#else
     TestAllocatorLevel02 al2;
+#endif
     uint64_t capacity = 500 * 512 * 4096; // 500x2 MB
     al2.init(capacity, 0x1000);
     std::cout << ("Init L2 Unaligned2\n");
@@ -535,7 +565,11 @@ TEST(TestAllocatorLevel01, test_l2_unaligned)
   }
 
   {
+#ifdef KPS_ALLOCATOR
+   TestAllocatorLevel02 al2(slots_per_slotset, 4096, {0}, true);
+#else
     TestAllocatorLevel02 al2;
+#endif
     uint64_t capacity = 100 * 512 * 4096 + 127 * 4096;
     al2.init(capacity, 0x1000);
     std::cout << "Init L2 Unaligned2" << std::endl;
@@ -558,7 +592,11 @@ TEST(TestAllocatorLevel01, test_l2_unaligned)
     }
   }
   {
+#ifdef KPS_ALLOCATOR
+   TestAllocatorLevel02 al2(slots_per_slotset, 4096, {0}, true);
+#else
     TestAllocatorLevel02 al2;
+#endif
     uint64_t capacity = 3 * 4096;
     al2.init(capacity, 0x1000);
     std::cout << "Init L2 Unaligned2" << std::endl;
@@ -586,6 +624,7 @@ TEST(TestAllocatorLevel01, test_l2_unaligned)
 
 TEST(TestAllocatorLevel01, test_l2_contiguous_alignment)
 {
+#ifndef KPS_ALLOCATOR
   {
     TestAllocatorLevel02 al2;
     uint64_t num_l2_entries = 3;
@@ -851,13 +890,18 @@ TEST(TestAllocatorLevel01, test_l2_contiguous_alignment)
     }
 
   }
+#endif
   std::cout << "Done L2 cont aligned" << std::endl;
 }
 
 TEST(TestAllocatorLevel01, test_4G_alloc_bug)
 {
   {
+#ifdef KPS_ALLOCATOR
+    TestAllocatorLevel02 al2(slots_per_slotset, 4096, {0}, true);
+#else
     TestAllocatorLevel02 al2;
+#endif
     uint64_t capacity = 0x8000 * _1m; // = 32GB
     al2.init(capacity, 0x10000);
     std::cout << "Init L2 cont aligned" << std::endl;
@@ -875,7 +919,11 @@ TEST(TestAllocatorLevel01, test_4G_alloc_bug)
 TEST(TestAllocatorLevel01, test_4G_alloc_bug2)
 {
   {
+#ifdef KPS_ALLOCATOR
+    TestAllocatorLevel02 al2(slots_per_slotset, 4096, {0}, true);
+#else
     TestAllocatorLevel02 al2;
+#endif
     uint64_t capacity = 0x8000 * _1m; // = 32GB
     al2.init(capacity, 0x10000);
 
@@ -903,19 +951,29 @@ TEST(TestAllocatorLevel01, test_4G_alloc_bug2)
     uint64_t allocated4 = 0;
     interval_vector_t a4;
     al2.allocate_l2(0x3e000000, _1m, &allocated4, &a4);
+#ifdef KPS_ALLOCATOR
+    ASSERT_EQ(a4.size(), 1u);
+    ASSERT_EQ(a4[0].offset, 0x628000000u);
+    ASSERT_EQ(a4[0].length, 0x3e000000u);
+#else
     ASSERT_EQ(a4.size(), 2u);
-    ASSERT_EQ(allocated4, 0x3e000000u);
     ASSERT_EQ(a4[0].offset, 0x5fed00000u);
     ASSERT_EQ(a4[0].length, 0x1300000u);
     ASSERT_EQ(a4[1].offset, 0x628000000u);
     ASSERT_EQ(a4[1].length, 0x3cd00000u);
+#endif
+    ASSERT_EQ(allocated4, 0x3e000000u);
   }
 }
 
 TEST(TestAllocatorLevel01, test_4G_alloc_bug3)
 {
   {
+#ifdef KPS_ALLOCATOR
+    TestAllocatorLevel02 al2(slots_per_slotset, 4096, {0}, true);
+#else
     TestAllocatorLevel02 al2;
+#endif
     uint64_t capacity = 0x8000 * _1m; // = 32GB
     al2.init(capacity, 0x10000);
     std::cout << "Init L2 cont aligned" << std::endl;

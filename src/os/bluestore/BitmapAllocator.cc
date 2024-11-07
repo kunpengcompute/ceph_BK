@@ -8,11 +8,23 @@
 #undef dout_prefix
 #define dout_prefix *_dout << "fbmap_alloc " << this << " "
 
+#ifdef KPS_ALLOCATOR
+BitmapAllocator::BitmapAllocator(CephContext* _cct,
+		    int64_t capacity,
+		    int64_t alloc_unit,
+		    const std::string& name,
+		    KpsAllocPos pos,
+		    bool enable_kps_allocator) :
+#else
 BitmapAllocator::BitmapAllocator(CephContext* _cct,
 					 int64_t capacity,
 					 int64_t alloc_unit,
 					 const std::string& name) :
+#endif
     Allocator(name),
+#ifdef KPS_ALLOCATOR
+    AllocatorLevel02<AllocatorLevel01Loose>(slots_per_slotset, alloc_unit, pos, enable_kps_allocator),
+#endif
     cct(_cct)
 {
   ldout(cct, 10) << __func__ << " 0x" << std::hex << capacity << "/"

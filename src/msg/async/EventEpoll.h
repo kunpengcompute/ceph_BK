@@ -27,9 +27,14 @@ class EpollDriver : public EventDriver {
   struct epoll_event *events;
   CephContext *cct;
   int size;
+  bool is_polling;
+  bool adaptive_polling;
 
  public:
-  explicit EpollDriver(CephContext *c): epfd(-1), events(NULL), cct(c), size(0) {}
+  explicit EpollDriver(CephContext *c): epfd(-1), events(NULL), cct(c), size(0) {
+    is_polling = cct->_conf->ms_async_op_threads_polling;
+    adaptive_polling = cct->_conf->ms_async_op_threads_adaptive_polling;
+  }
   ~EpollDriver() override {
     if (epfd != -1)
       close(epfd);
@@ -44,6 +49,13 @@ class EpollDriver : public EventDriver {
   int resize_events(int newsize) override;
   int event_wait(vector<FiredFileEvent> &fired_events,
 		 struct timeval *tp) override;
+  bool need_wakeup() override {
+    if (is_polling) {
+        return false;
+    }
+
+    return true;
+  }
 };
 
 #endif

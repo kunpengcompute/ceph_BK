@@ -23,6 +23,9 @@
                            << " " << __func__ << ": "
 
 namespace librbd {
+
+using util::create_context_callback;
+
 namespace io {
 
 namespace {
@@ -305,11 +308,15 @@ void ImageRequestWQ<I>::aio_write(AioCompletion *c, uint64_t off, uint64_t len,
   CephContext *cct = m_image_ctx.cct;
   FUNCTRACE(cct);
   ZTracer::Trace trace;
+  static int one_flight_times = 0;
+  static bool is_queue = true;
+  static bool always_queue = false;
+#if defined(WITH_LTTNG) && defined(WITH_EVENTTRACE)
   if (m_image_ctx.blkin_trace_all) {
     trace.init("wq: write", &m_image_ctx.trace_endpoint);
     trace.event("init");
   }
-
+#endif
   c->init_time(util::get_image_ctx(&m_image_ctx), AIO_TYPE_WRITE);
   ldout(cct, 20) << "ictx=" << &m_image_ctx << ", "
                  << "completion=" << c << ", off=" << off << ", "
@@ -323,8 +330,18 @@ void ImageRequestWQ<I>::aio_write(AioCompletion *c, uint64_t off, uint64_t len,
     return;
   }
 
+  if (one_flight_times == 100) {
+    is_queue = false;
+  }
+
   RWLock::RLocker owner_locker(m_image_ctx.owner_lock);
-  if (m_image_ctx.non_blocking_aio || writes_blocked()) {
+  if (always_queue || is_queue && (m_image_ctx.non_blocking_aio || writes_blocked())) {
+    if (m_in_flight_ios <= 1) {
+        one_flight_times++;
+    } else {
+        always_queue = true;
+        one_flight_times = 0;
+    }
     queue(ImageDispatchSpec<I>::create_write_request(
             m_image_ctx, c, {{off, len}}, std::move(bl), op_flags, trace));
   } else {
@@ -333,7 +350,9 @@ void ImageRequestWQ<I>::aio_write(AioCompletion *c, uint64_t off, uint64_t len,
 			       std::move(bl), op_flags, trace);
     finish_in_flight_io();
   }
+#if defined(WITH_LTTNG) && defined(WITH_EVENTTRACE)
   trace.event("finish");
+#endif
 }
 
 template <typename I>
@@ -755,7 +774,11 @@ void *ImageRequestWQ<I>::_void_dequeue() {
       } else {
         // stall IO until the acquire completes
         ++m_io_blockers;
-        m_image_ctx.exclusive_lock->acquire_lock(new C_AcquireLock(this, item));
+        Context *ctx = new C_AcquireLock(this, item);
+        ctx = create_context_callback<
+          Context, &Context::complete>(
+            ctx, m_image_ctx.exclusive_lock);
+        m_image_ctx.exclusive_lock->acquire_lock(ctx);
       }
     } else {
       // raced with the exclusive lock being disabled

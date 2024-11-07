@@ -61,6 +61,9 @@
 #include "messages/MOSDOp.h"
 #include "common/EventTrace.h"
 
+#include <hi_coreutil.h>
+#include "boost/algorithm/string.hpp"
+
 #define CEPH_OSD_PROTOCOL    10 /* cluster internal */
 
 /*
@@ -82,6 +85,12 @@ enum {
   l_osd_op_lat,
   l_osd_op_process_lat,
   l_osd_op_prepare_lat,
+  l_osd_op_before_find_context_lat,
+  l_osd_op_find_object_context_lat,
+  l_osd_op_before_exeute_lat,
+  l_osd_op_pg_submit_transaction,
+  l_osd_op_rep_issue_op,
+  l_osd_op_queue_transactions,
   l_osd_op_r,
   l_osd_op_r_outb,
   l_osd_op_r_lat,
@@ -394,28 +403,20 @@ public:
     return next_osdmap;
   }
 
-private:
-  Mutex peer_map_epoch_lock;
-  map<int, epoch_t> peer_map_epoch;
-public:
-  epoch_t get_peer_epoch(int p);
-  epoch_t note_peer_epoch(int p, epoch_t e);
-  void forget_peer_epoch(int p, epoch_t e);
+   void maybe_share_map(Connection *con,
+		       const OSDMapRef& osdmap,
+		       epoch_t peer_epoch_lb=0);
 
   void send_map(class MOSDMap *m, Connection *con);
-  void send_incremental_map(epoch_t since, Connection *con, const OSDMapRef& osdmap);
+  void send_incremental_map(epoch_t since, Connection *con,
+			    const OSDMapRef& osdmap);
   MOSDMap *build_incremental_map_msg(epoch_t from, epoch_t to,
                                        OSDSuperblock& superblock);
-  bool should_share_map(entity_name_t name, Connection *con, epoch_t epoch,
-                        const OSDMapRef& osdmap, const epoch_t *sent_epoch_p);
-  void share_map(entity_name_t name, Connection *con, epoch_t epoch,
-                 OSDMapRef& osdmap, epoch_t *sent_epoch_p);
-  void share_map_peer(int peer, Connection *con,
-                      OSDMapRef map = OSDMapRef());
 
   ConnectionRef get_con_osd_cluster(int peer, epoch_t from_epoch);
   pair<ConnectionRef,ConnectionRef> get_con_osd_hb(int peer, epoch_t from_epoch);  // (back, front)
   void send_message_osd_cluster(int peer, Message *m, epoch_t from_epoch);
+  void send_message_osd_cluster(std::vector<std::pair<int, Message*>>& messages, epoch_t from_epoch);
   void send_message_osd_cluster(Message *m, Connection *con) {
     con->send_message(m);
   }
@@ -1274,6 +1275,7 @@ class OSD : public Dispatcher,
   Mutex tick_timer_lock;
   SafeTimer tick_timer_without_osd_lock;
   std::string gss_ktfile_client{};
+  std::atomic<int> inflight_num {0};
 
 public:
   // config observer bits
@@ -1489,7 +1491,6 @@ private:
   // -- sessions --
 private:
   void dispatch_session_waiting(SessionRef session, OSDMapRef osdmap);
-  void maybe_share_map(Session *session, OpRequestRef op, OSDMapRef osdmap);
 
   Mutex session_waiting_lock;
   set<SessionRef> session_waiting_for_map;
@@ -2377,6 +2378,23 @@ private:
   void get_perf_reports(
       std::map<OSDPerfMetricQuery, OSDPerfMetricReport> *reports);
 
+  void get_kpseclog_param( SdslogParam &param) {
+    param.usrModuleName = "kpsec-" + cct->_conf->name.get_id();
+    param.fullPath = cct->_conf->kpsec_log_fullpath;
+    vector<string> vecLogLv;
+    boost::split(vecLogLv, cct->_conf->kpsec_log_level, boost::is_any_of("/|"));
+    if (vecLogLv.size() == 1) {
+      param.fileLogLevel = param.memLogLevel = param.ParseToInt(vecLogLv[0]);
+    } else if (vecLogLv.size() == 2) {
+      param.fileLogLevel = param.ParseToInt(vecLogLv[0]);
+      param.memLogLevel = param.ParseToInt(vecLogLv[1]);
+    } else {
+      param.fileLogLevel = 0;
+      param.memLogLevel = 4;
+    }
+    param.memLogSize = cct->_conf->kpsec_log_memlogsize;
+  }
+  
   Mutex m_perf_queries_lock = {"OSD::m_perf_queries_lock"};
   std::list<OSDPerfMetricQuery> m_perf_queries;
   std::map<OSDPerfMetricQuery, OSDPerfMetricLimits> m_perf_limits;

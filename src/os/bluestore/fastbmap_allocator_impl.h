@@ -13,6 +13,9 @@
 #include <vector>
 #include <algorithm>
 #include <mutex>
+#ifdef KPS_ALLOCATOR
+#include <kps_bluestore.h>
+#endif
 
 typedef uint64_t slot_t;
 
@@ -40,13 +43,22 @@ typedef std::vector<slot_t> slot_vector_t;
 typedef bluestore_interval_t<uint64_t, uint64_t> interval_t;
 typedef PExtentVector interval_vector_t;
 
-typedef mempool::bluestore_alloc::vector<slot_t> slot_vector_t;
+#ifdef KPS_ALLOCATOR
+  typedef std::vector<slot_t> slot_vector_t;
+#else
+  typedef mempool::bluestore_alloc::vector<slot_t> slot_vector_t;
+#endif
 
 #endif
 
-// fitting into cache line on x86_64
-static const size_t slotset_width = 8; // 8 slots per set
-static const size_t slots_per_slotset = 8;
+#ifdef KPS_ALLOCATOR
+  static const size_t slots_per_slotset = 16;
+  static const size_t slotset_width = 16;
+#else
+  // fitting into cache line on x86_64
+  static const size_t slots_per_slotset = 8; // 8 slots per set
+  static const size_t slotset_width = 8;
+#endif
 static const size_t slotset_bytes = sizeof(slot_t) * slotset_width;
 static const size_t bits_per_slot = sizeof(slot_t) * 8;
 static const size_t bits_per_slotset = slotset_bytes * 8;
@@ -101,9 +113,6 @@ protected:
   uint64_t l0_granularity = 0; // space per entry
   uint64_t l1_granularity = 0; // space per entry
 
-  size_t partial_l1_count = 0;
-  size_t unalloc_l1_count = 0;
-
   double get_fragmentation() const {
     double res = 0.0;
     auto total = unalloc_l1_count + partial_l1_count;
@@ -122,6 +131,8 @@ protected:
     return l1[idx] == all_slot_clear;
   }
 public:
+  size_t partial_l1_count = 0;
+  size_t unalloc_l1_count = 0;
   inline uint64_t get_min_alloc_size() const
   {
     return l0_granularity;
@@ -496,6 +507,14 @@ template <class L1>
 class AllocatorLevel02 : public AllocatorLevel
 {
 public:
+#ifdef KPS_ALLOCATOR
+  AllocatorLevel02(size_t slots_per_slotset, uint64_t alloc_unit, KpsAllocPos pos, bool kps_allocator_enable) :
+      enable_kps_allocator(kps_allocator_enable),
+      kps_allocator(slots_per_slotset, alloc_unit, pos, l1.partial_l1_count, l1.unalloc_l1_count) {}
+  virtual ~AllocatorLevel02()
+  {}
+#endif
+
   uint64_t debug_get_free(uint64_t pos0 = 0, uint64_t pos1 = 0)
   {
     std::lock_guard l(lock);
@@ -532,6 +551,10 @@ protected:
   uint64_t l2_granularity = 0; // space per entry
   uint64_t available = 0;
   uint64_t last_pos = 0;
+#ifdef KPS_ALLOCATOR
+  bool enable_kps_allocator;
+  class KpsAllocator kps_allocator;
+#endif
 
   enum {
     CHILD_PER_SLOT = bits_per_slot, // 64
@@ -655,6 +678,24 @@ protected:
     if (available < min_length) {
       return;
     }
+
+#ifdef KPS_ALLOCATOR
+    if ((min_length == l1.l0_granularity) && (enable_kps_allocator == true)) {
+      KpsAllocInfo info;
+      std::vector<KpsExtent> extents;
+      info.wantSize = length;
+      info.allocUnit = min_length;
+      uint64_t allocLen = kps_allocator.KpsAllocate(info, l1.l0, l1.l1, l2, extents);
+      for(auto iter = extents.begin(); iter != extents.end(); iter++) {
+	l1._fragment_and_emplace(max_length, (*iter).off, (*iter).len, res);
+      }
+      ++l2_allocs;
+      available -= allocLen;
+      *allocated += allocLen;
+      return;
+    }
+#endif
+
     if (hint != 0) {
       last_pos = (hint / d) < l2.size() ? p2align(hint, d) : 0;
     }

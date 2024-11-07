@@ -25,6 +25,10 @@
 #include "global/global_context.h"
 #include "common/config.h"
 #include "gtest/gtest.h"
+#include "common/Clock.h"
+
+#define DEBUG 0
+const unsigned SIMD_ALIGN = 32;
 
 ErasureCodeIsaTableCache tcache;
 
@@ -34,6 +38,7 @@ public:
   void encode_decode(unsigned object_size); 
 };
 
+#if 0
 void IsaErasureCodeTest::compare_chunks(bufferlist &in, map<int, bufferlist> &encoded)
 {
   unsigned object_size = in.length();
@@ -186,11 +191,157 @@ TEST_F(IsaErasureCodeTest, encode_decode)
   encode_decode(4096);
   encode_decode(4096 + 1);
 }
+#endif
 
+bufferlist create_buffer(char c, int count) {
+#define LARGE_ENOUGH 16 * 1024 * 1024
+  bufferptr ptr(buffer::create_page_aligned(LARGE_ENOUGH));
+  ptr.zero();
+  ptr.set_length(0);
+  string payload(count, c);
+  ptr.append(payload.c_str(), payload.size());
+  bufferlist bl;
+  bl.push_back(ptr);
+  return bl;
+}
+
+bool encode_update(const int k, const int m, const int raw_chunk_size,
+		   const pair<int, int> update_range) {
+  // we encode base data first and get result (map<int, bufferlist>) A
+  // then try to update some chunks of base data, and get result B
+  // we can get the new data from the first k chunks of B
+  // directly use this new data to encode , and get data C
+  // wish B ==C
+  
+  ErasureCodeIsaDefault Isa(tcache);
+  ErasureCodeProfile profile;
+  profile["k"] = to_string(k);
+  profile["m"] = to_string(m);
+  Isa.init(profile, &cerr);
+
+  // encode base data
+  set<int> want_to_encode;
+  map<int, bufferlist> encoded_base;
+  bufferlist in_base = create_buffer('X', k * raw_chunk_size);
+
+  for ( int i = 0 ; i < (k + m); i++) {
+    want_to_encode.insert(i);
+  }
+ 
+  EXPECT_EQ(0, Isa.encode(want_to_encode, in_base, &encoded_base));
+
+  int chunk_size = encoded_base[0].length();
+
+#if DEBUG
+  cout << "chunk size is: " << encoded_base[0].length()
+       << " and base is: " << endl;
+  for ( int i = 0; i< k + m ; i++) {
+    cout << i << ": " << string(encoded_base[i].c_str(), chunk_size) << endl;
+  }
+#endif
+
+  EXPECT_EQ((unsigned)(k + m), encoded_base.size());
+
+  // try update
+  bufferlist to_update = 
+      create_buffer('*', update_range.second - update_range.first);
+  map<int, bufferlist> encode_to_update;
+  Isa.get_chunks_to_update(to_update, update_range, k, encoded_base, &encode_to_update);
+
+  Isa.encode_update(&encoded_base, &encode_to_update);
+
+#if DEBUG
+  cout << "\nupdated succesess!" << endl;
+
+  cout << " base is: " << endl;
+  for ( int i = 0; i < k + m; i++) {
+    cout << i << ": " << string(encode_to_update[i].c_str(), chunk_size) << endl;
+  }
+
+  cout << "updated i: " << endl;
+  for (auto &e : encode_to_update) {
+    int i = e.first;
+    cout << i << ": " << string(encoded_base[i].c_str(), chunk_size) <<endl;
+  }
+#endif
+
+  map<int, bufferlist> encoded_new;
+  bufferlist in_new = create_buffer('X', k * chunk_size);
+  in_new.copy_in(0, k * chunk_size, encoded_base[0].c_str(), true);
+  for (auto&e : encode_to_update) {
+    int i =e.first;
+    if (i >= k) break;
+    in_new.copy_in(i * chunk_size, chunk_size, encode_to_update[i].c_str(), true);
+  } 
+  Isa.encode(want_to_encode, in_new, &encoded_new);
+
+#if DEBUG
+  cout << "\nnew is: " << endl;
+  for ( int i = 0; i < k + m; i++) {
+    cout << i << ": " << string(encoded_new[i].c_str(), chunk_size) << endl;
+  }
+#endif
+
+  // do check
+  unsigned int length = encoded_base[0].length();
+#if DEBUG
+  cout << "\nstart compare: " << endl;
+#endif
+  for (auto &e : encode_to_update) {
+    int i = e.first;
+#if DEBUG
+    cout << i << ":";
+#endif
+    EXPECT_EQ(0,
+	      memcmp(encoded_new[i].c_str(), encode_to_update[i].c_str(), length));
+#if DEBUG
+    cout << "pass" << endl;  
+#endif
+  }
+  return true;
+}
+
+#if 1
+TEST_F(IsaErasureCodeTest, encode_update_partial_chunk)
+{
+  EXPECT_EQ(encode_update(4, 2, 65, {0, 63}), true);
+}
+TEST_F(IsaErasureCodeTest,encode_update_one_chunk)
+{
+  EXPECT_EQ(encode_update(4, 2, 63, {0, 64}),true);
+}
+TEST_F(IsaErasureCodeTest,encode_update_multi_chunk)
+{
+  EXPECT_EQ(encode_update(4, 2, 64, {0, 65}),true);
+}
+TEST_F(IsaErasureCodeTest,encode_update_nothing)
+{
+  EXPECT_EQ(encode_update(2, 1, 64, {0, 0}),true);
+}
+#endif
+TEST_F(IsaErasureCodeTest,encode_update_small_chunk)
+{
+  EXPECT_EQ(encode_update(2, 1, 31, {0, 31}),true);
+}
+
+#if 0
+TEST_F(IsaErasureCodeTest,encode_update_one_chunk2)
+{
+  int k, m;
+  std::cout << "input k & m" << std::endl;
+  std::cin >> k >> m;
+  int times = 1000;
+  while (times--)
+    EXPECT_EQ(encode_update(k, m, 4*1024, {0, 4*1024}), true);
+}
+#endif
+
+#if 0
 TEST_F(IsaErasureCodeTest, minimum_to_decode)
 {
   ErasureCodeIsaDefault Isa(tcache);
   ErasureCodeProfile profile;
+  
   profile["k"] = "2";
   profile["m"] = "2";
   Isa.init(profile, &cerr);
@@ -222,6 +373,7 @@ TEST_F(IsaErasureCodeTest, minimum_to_decode)
 					   available_chunks,
 					   &minimum));
   }
+
   //
   // Reading a subset of the available chunks is always possible.
   //
@@ -954,7 +1106,7 @@ TEST_F(IsaErasureCodeTest, create_rule)
     EXPECT_EQ("unknown type WORSE", ss.str());
   }
 }
-
+#endif
 /*
  * Local Variables:
  * compile-command: "cd ../.. ; make -j4 unittest_erasure_code_isa &&

@@ -426,7 +426,7 @@ Pipe *SimpleMessenger::connect_rank(const entity_addr_t& addr,
 
 
 ConnectionRef SimpleMessenger::connect_to(int type,
-					  const entity_addrvec_t& addrs)
+					  const entity_addrvec_t& addrs, bool not_local_dest)
 {
   Mutex::Locker l(lock);
   if (my_addr == addrs.front()) {

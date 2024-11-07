@@ -74,6 +74,12 @@ public:
     ECSubReadReply *reply,
     const ZTracer::Trace &trace
     );
+  void handle_sub_read_n_reply(
+    pg_shard_t from,
+    ECSubRead &op,
+    const ZTracer::Trace &trace,
+    int priority
+    );
   void handle_sub_write_reply(
     pg_shard_t from,
     const ECSubWriteReply &op,
@@ -137,7 +143,7 @@ public:
    * check_recovery_sources.
    */
   void objects_read_and_reconstruct(
-    const map<hobject_t, std::list<boost::tuple<uint64_t, uint64_t, uint32_t> >
+    const std::map<hobject_t, std::pair<std::list<boost::tuple<uint64_t, uint64_t, uint32_t>>, bool >
     > &reads,
     bool fast_read,
     GenContextURef<map<hobject_t,pair<int, extent_map> > &&> &&func);
@@ -167,6 +173,27 @@ public:
       func.release()->complete(std::move(results));
     }
   };
+  bool can_partial_read(const hobject_t &hoid)
+  {
+    if (get_parent()->get_pool().fast_read) {
+      return false;
+    }
+    set<int> want_to_read;
+    get_want_to_read_shards(&want_to_read);
+
+    set<int> have;
+    map<shard_id_t, pg_shard_t> shards;
+    set<pg_shard_t> error_shards;
+    get_all_avail_shards(hoid, error_shards, have, shards, false);
+
+    if ( includes(have.begin(), have.end(), want_to_read.begin(), want_to_read.end())) {
+      return true;
+    }
+    return false;
+  }
+
+  void get_off_len_shards( uint64_t off, uint64_t len, set<int>& out);
+
   list<ClientAsyncReadStatus> in_progress_client_reads;
   void objects_read_async(
     const hobject_t &hoid,
@@ -178,14 +205,25 @@ public:
   template <typename Func>
   void objects_read_async_no_cache(
     const map<hobject_t,extent_set> &to_read,
+    bool partial_read,
     Func &&on_complete) {
-    map<hobject_t,std::list<boost::tuple<uint64_t, uint64_t, uint32_t> > > _to_read;
+    std::map<hobject_t,std::pair<std::list<boost::tuple<uint64_t, uint64_t, uint32_t> >,bool > > _to_read;
     for (auto &&hpair: to_read) {
       auto &l = _to_read[hpair.first];
+      l.second = partial_read;
       for (auto extent: hpair.second) {
-	l.emplace_back(extent.first, extent.second, 0);
+   uint64_t off = extent.first;
+   uint64_t len = extent.second;
+   if ( l.second) {
+     pair<uint64_t, uint64_t> tmp = sinfo.offset_len_to_chunk_unit_bounds(
+     make_pair(extent.first, extent.second));
+     off = tmp.first;
+     len = tmp.second;
+   }
+	l.first.emplace_back(off,len, 0);
       }
     }
+    
     objects_read_and_reconstruct(
       _to_read,
       false,
@@ -193,6 +231,7 @@ public:
       map<hobject_t,pair<int, extent_map> > &&, Func>(
 	  std::forward<Func>(on_complete)));
   }
+  
   void kick_reads() {
     while (in_progress_client_reads.size() &&
 	   in_progress_client_reads.front().is_complete()) {
@@ -355,13 +394,15 @@ public:
     const map<pg_shard_t, vector<pair<int, int>>> need;
     const bool want_attrs;
     GenContext<pair<RecoveryMessages *, read_result_t& > &> *cb;
+    const bool partial_read;
     read_request_t(
       const list<boost::tuple<uint64_t, uint64_t, uint32_t> > &to_read,
       const map<pg_shard_t, vector<pair<int, int>>> &need,
       bool want_attrs,
-      GenContext<pair<RecoveryMessages *, read_result_t& > &> *cb)
+      GenContext<pair<RecoveryMessages *, read_result_t& > &> *cb,
+      bool partial_read = false)
       : to_read(to_read), need(need), want_attrs(want_attrs),
-	cb(cb) {}
+   cb(cb), partial_read(partial_read) {}
   };
   friend ostream &operator<<(ostream &lhs, const read_request_t &rhs);
 
@@ -485,6 +526,9 @@ public:
     map<hobject_t,extent_set> pending_read; // subset already being read
     map<hobject_t,extent_set> remote_read;  // subset we must read
     map<hobject_t,extent_map> remote_read_result;
+    bool ec_partial_read;
+    bool ec_partial_write;
+    
     bool read_in_progress() const {
       return !remote_read.empty() && remote_read_result.empty();
     }
@@ -495,6 +539,9 @@ public:
     // read on a remote shard before it has applied a previous write.  We can
     // remove this after nautilus.
     set<pg_shard_t> pending_apply;
+
+   set<pg_shard_t> write_to_shards;
+
     bool write_in_progress() const {
       return !pending_commit.empty() || !pending_apply.empty();
     }
@@ -600,6 +647,10 @@ public:
   };
   IsPGRecoverablePredicate *get_is_recoverable_predicate() const override {
     return new ECRecPred(ec_impl);
+  }
+
+  int get_ec_chunk_count() const  {
+   return ec_impl->get_chunk_count();
   }
 
   int get_ec_data_chunk_count() const override {

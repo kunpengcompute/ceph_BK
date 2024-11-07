@@ -152,6 +152,8 @@ OPTION(ms_dump_on_send, OPT_BOOL)           // hexdump msg to log on send
 OPTION(ms_dump_corrupt_message_level, OPT_INT)  // debug level to hexdump undecodeable messages at
 OPTION(ms_async_op_threads, OPT_U64)            // number of worker processing threads for async messenger created on init
 OPTION(ms_async_max_op_threads, OPT_U64)        // max number of worker processing threads for async messenger
+OPTION(ms_async_op_threads_polling, OPT_BOOL)
+OPTION(ms_async_op_threads_adaptive_polling, OPT_BOOL)
 OPTION(ms_async_rdma_device_name, OPT_STR)
 OPTION(ms_async_rdma_enable_hugepage, OPT_BOOL)
 OPTION(ms_async_rdma_buffer_size, OPT_INT)
@@ -663,6 +665,13 @@ OPTION(osd_ignore_stale_divergent_priors, OPT_BOOL) // do not assert on divergen
 // If set to true even after reading enough shards to
 // decode the object, any error will be reported.
 OPTION(osd_read_ec_check_for_errors, OPT_BOOL) // return error if any ec shard has an error
+OPTION(osd_ec_partial_read, OPT_BOOL) // enable ec partial read
+OPTION(osd_ec_partial_write, OPT_BOOL) // enable ec partial write
+OPTION(osd_ec_partial_update, OPT_BOOL) 
+OPTION(osd_ec_zero_opt, OPT_BOOL) // enable ec rgw zero optimization
+OPTION(kpsec_log_fullpath, OPT_STR) //The path to store KPS_EC log
+OPTION(kpsec_log_level, OPT_STR) // The level of kpsec_log
+OPTION(kpsec_log_memlogsize, OPT_U64) // kpsec_memlog_size
 
 // Only use clone_overlap for recovery if there are fewer than
 // osd_recover_clone_overlap_limit entries in the overlap set
@@ -916,6 +925,8 @@ OPTION(memstore_device_bytes, OPT_U64)
 OPTION(memstore_page_set, OPT_BOOL)
 OPTION(memstore_page_size, OPT_U64)
 
+OPTION(bluestore_kv_sync_thread_polling, OPT_BOOL)
+OPTION(bluestore_kv_finalize_thread_polling, OPT_BOOL)
 OPTION(bdev_debug_inflight_ios, OPT_BOOL)
 OPTION(bdev_inject_crash, OPT_INT)  // if N>0, then ~ 1/N IOs will complete before we crash on flush.
 OPTION(bdev_inject_crash_flush_delay, OPT_INT) // wait N more seconds on flush
@@ -1043,6 +1054,7 @@ OPTION(bluestore_allocator, OPT_STR)     // stupid | bitmap
 OPTION(bluestore_freelist_blocks_per_key, OPT_INT)
 OPTION(bluestore_bitmapallocator_blocks_per_zone, OPT_INT) // must be power of 2 aligned, e.g., 512, 1024, 2048...
 OPTION(bluestore_bitmapallocator_span_size, OPT_INT) // must be power of 2 aligned, e.g., 512, 1024, 2048...
+OPTION(bluestore_kpsallocator_enable, OPT_BOOL) // enable bluestore kps allocator
 OPTION(bluestore_max_deferred_txc, OPT_U64)
 OPTION(bluestore_rocksdb_options, OPT_STR)
 OPTION(bluestore_fsck_on_mount, OPT_BOOL)

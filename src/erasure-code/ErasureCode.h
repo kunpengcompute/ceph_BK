@@ -60,6 +60,11 @@ namespace ceph {
       return 1;
     }
 
+    virtual int get_chunks_to_update(
+      bufferlist &to_update, const std::pair<unsigned int, unsigned int> range,
+      const int k, const std::map<int, bufferlist> &encoded,
+      std::map<int, bufferlist> *chunks_to_update);
+
     virtual int _minimum_to_decode(const std::set<int> &want_to_read,
 				   const std::set<int> &available_chunks,
 				   std::set<int> *minimum);
@@ -82,6 +87,10 @@ namespace ceph {
     int encode_chunks(const std::set<int> &want_to_encode,
                               std::map<int, bufferlist> *encoded) override;
 
+    virtual int encode_update(std::map<int, bufferlist> *encoded,
+		    	      std::map<int, bufferlist> *chunks_new);
+
+    virtual bool is_support_ec_update();
     int decode(const std::set<int> &want_to_read,
                 const std::map<int, bufferlist> &chunks,
                 std::map<int, bufferlist> *decoded, int chunk_size) override;
@@ -120,12 +129,10 @@ namespace ceph {
     int decode_concat(const std::map<int, bufferlist> &chunks,
 			      bufferlist *decoded) override;
 
+    int chunk_index(unsigned int i) const override;
   protected:
     int parse(const ErasureCodeProfile &profile,
 	      std::ostream *ss);
-
-  private:
-    int chunk_index(unsigned int i) const;
   };
 }
 

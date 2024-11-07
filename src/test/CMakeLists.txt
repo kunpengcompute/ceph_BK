@@ -898,3 +898,6 @@ add_ceph_unittest(unittest_any)
 target_link_libraries(unittest_any)
 
 #make check ends here
+if(HAVE_KPSALLOCATOR)
+   add_definitions("-DKPS_ALLOCATOR")
+endif(HAVE_KPSALLOCATOR)

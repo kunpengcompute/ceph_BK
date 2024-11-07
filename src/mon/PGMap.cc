@@ -913,7 +913,16 @@ void PGMapDigest::dump_object_stat_sum(
   }
   auto avail_res = raw_used_rate ? avail / raw_used_rate : 0;
   // an approximation for actually stored user data
-  auto stored_normalized = pool_stat.get_user_bytes(raw_used_rate, per_pool);
+  uint64_t stored_normalized = 0;
+  switch (pool->get_type()) {
+  case pg_pool_t::TYPE_ERASURE:
+    stored_normalized = pool_stat.get_user_bytes(raw_used_rate, false);
+    break;
+  default:
+    stored_normalized = pool_stat.get_user_bytes(raw_used_rate, per_pool);
+    break;
+  }
+
   if (f) {
     f->dump_int("stored", stored_normalized);
     f->dump_int("objects", sum.num_objects);

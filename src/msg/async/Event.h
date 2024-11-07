@@ -152,6 +152,7 @@ class EventCenter {
   };
 
  private:
+  friend class NetworkStack;
   CephContext *cct;
   std::string type;
   int nevent;

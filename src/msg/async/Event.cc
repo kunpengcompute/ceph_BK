@@ -371,7 +371,7 @@ int EventCenter::process_events(unsigned timeout_microseconds,  ceph::timespan *
   auto it = time_events.begin();
   bool blocking = pollers.empty() && !external_num_events.load();
   // If exists external events or poller, don't block
-  if (!blocking) {
+  if (!driver->need_wakeup() || !blocking) {
     if (it != time_events.end() && now >= it->first)
       trigger_time = true;
     tv.tv_sec = 0;
@@ -392,6 +392,7 @@ int EventCenter::process_events(unsigned timeout_microseconds,  ceph::timespan *
         timeout_microseconds = 0;
       }
     }
+
     tv.tv_sec = timeout_microseconds / 1000000;
     tv.tv_usec = timeout_microseconds % 1000000;
   }

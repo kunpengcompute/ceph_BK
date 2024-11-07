@@ -524,6 +524,12 @@ void PrimaryLogPG::send_message_osd_cluster(
 }
 
 void PrimaryLogPG::send_message_osd_cluster(
+  std::vector<std::pair<int, Message*>>& messages, epoch_t from_epoch)
+{
+  osd->send_message_osd_cluster(messages, from_epoch);
+}
+
+void PrimaryLogPG::send_message_osd_cluster(
   Message *m, Connection *con)
 {
   osd->send_message_osd_cluster(m, con);
@@ -1758,10 +1764,12 @@ void PrimaryLogPG::do_request(
   OpRequestRef& op,
   ThreadPool::TPHandle &handle)
 {
+#if defined(WITH_LTTNG) && defined(WITH_EVENTTRACE)
   if (op->osd_trace) {
     op->pg_trace.init("pg op", &trace_endpoint, &op->osd_trace);
     op->pg_trace.event("do request");
   }
+#endif
   // make sure we have a new enough map
   auto p = waiting_for_map.find(op->get_source());
   if (p != waiting_for_map.end()) {
@@ -2432,7 +2440,9 @@ void PrimaryLogPG::do_op(OpRequestRef& op)
     return;
   }
 
+#if defined(WITH_LTTNG) && defined(WITH_EVENTTRACE)
   op->mark_started();
+#endif
 
   execute_ctx(ctx);
   utime_t prepare_latency = ceph_clock_now();
