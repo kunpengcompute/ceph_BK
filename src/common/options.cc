@@ -2830,6 +2830,10 @@ std::vector<Option> get_global_options() {
     .set_description("")
     .add_see_also("osd_op_num_shards"),
 
+    Option("osd_process_polling", Option::TYPE_BOOL, Option::LEVEL_ADVANCED)
+    .set_default(false)
+    .set_description("osd main-shard process polling switch"),
+
     Option("osd_skip_data_digest", Option::TYPE_BOOL, Option::LEVEL_DEV)
     .set_default(false)
     .set_description("Do not store full-object checksums if the backend (bluestore) does its own checksums.  Only usable with all BlueStore OSDs."),

@@ -582,7 +582,6 @@ void KernelDevice::_aio_thread()
 	}
       }
     }
-    reap_ioc();
     if (cct->_conf->bdev_inject_crash) {
       ++inject_crash_count;
       if (inject_crash_count * cct->_conf->bdev_aio_poll_ms / 1000 >
@@ -594,7 +593,6 @@ void KernelDevice::_aio_thread()
       }
     }
   }
-  reap_ioc();
   dout(10) << __func__ << " end" << dendl;
 }
 
