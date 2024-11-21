@@ -2146,6 +2146,7 @@ OSD::OSD(CephContext *cct_, ObjectStore *store_,
   tick_timer_lock("OSD::tick_timer_lock"),
   tick_timer_without_osd_lock(cct, tick_timer_lock),
   gss_ktfile_client(cct->_conf.get_val<std::string>("gss_ktab_client_file")),
+  osd_process_polling(cct->_conf.get_val<bool>("osd_process_polling")),
   cluster_messenger(internal_messenger),
   client_messenger(external_messenger),
   objecter_messenger(osdc_messenger),
@@ -11108,9 +11109,13 @@ void OSD::ShardedOpWQ::_process(uint32_t thread_index, heartbeat_handle_d *hb)
       dout(20) << __func__ << " empty q, waiting" << dendl;
       osd->cct->get_heartbeat_map()->clear_timeout(hb);
       sdata->shard_lock.unlock();
-      if (!is_smallest_thread_index) {
-        sdata->sdata_cond.wait(wait_lock);
-        dout(20) << "wake up from thread_index: " << thread_index << dendl;
+      if (osd->osd_process_polling) {
+        if (!is_smallest_thread_index) {
+            sdata->sdata_cond.wait(wait_lock);
+            dout(20) << "wake up from thread_index: " << thread_index << dendl;
+        }
+      } else {
+          sdata->sdata_cond.wait(wait_lock);
       }
       wait_lock.unlock();
       sdata->shard_lock.lock();
@@ -11150,8 +11155,8 @@ void OSD::ShardedOpWQ::_process(uint32_t thread_index, heartbeat_handle_d *hb)
   }
 
   OpQueueItem item = sdata->pqueue->dequeue();
-  if (osd->inflight_num > 0) {
-    osd->inflight_num--;
+  if (osd->osd_process_polling && sdata->inflight_num > 0) {
+    sdata->inflight_num--;
   }
 
   if (osd->is_stopping()) {
@@ -11387,7 +11392,6 @@ void OSD::ShardedOpWQ::_process(uint32_t thread_index, heartbeat_handle_d *hb)
 }
 
 void OSD::ShardedOpWQ::_enqueue(OpQueueItem&& item) {
-  osd->inflight_num++;
   uint32_t shard_index =
     item.get_ordering_token().hash_to_shard(osd->shards.size());
 
@@ -11396,6 +11400,10 @@ void OSD::ShardedOpWQ::_enqueue(OpQueueItem&& item) {
   unsigned priority = item.get_priority();
   unsigned cost = item.get_cost();
   sdata->shard_lock.lock();
+
+  if (osd->osd_process_polling) {
+    sdata->inflight_num++;
+  }
 
   dout(20) << __func__ << " " << item << dendl;
   if (priority >= osd->op_prio_cutoff)
@@ -11406,20 +11414,30 @@ void OSD::ShardedOpWQ::_enqueue(OpQueueItem&& item) {
       item.get_owner(), priority, cost, std::move(item));
   sdata->shard_lock.unlock();
 
-  std::lock_guard l{sdata->sdata_wait_lock};
-  if (osd->inflight_num > 2) {
-    dout(20) << __func__ << " wake up due to multi op : " << osd->inflight_num << dendl;
+  if (osd->osd_process_polling) {
+    if (sdata->inflight_num > 2) {
+        std::lock_guard l{sdata->sdata_wait_lock};
+        dout(20) << __func__ << " wake up due to multi op : " << sdata->inflight_num << dendl;
+        sdata->sdata_cond.notify_one();
+    }
+  } 
+  else {
+    std::lock_guard l{sdata->sdata_wait_lock};
     sdata->sdata_cond.notify_one();
   }
 }
 
 void OSD::ShardedOpWQ::_enqueue_front(OpQueueItem&& item)
 {
-  osd->inflight_num++;
   auto shard_index = item.get_ordering_token().hash_to_shard(osd->shards.size());
   auto& sdata = osd->shards[shard_index];
   ceph_assert(sdata);
   sdata->shard_lock.lock();
+
+  if (osd->osd_process_polling) {
+    sdata->inflight_num++;
+  }
+
   auto p = sdata->pg_slots.find(item.get_ordering_token());
   if (p != sdata->pg_slots.end() &&
       !p->second->to_process.empty()) {
@@ -11439,7 +11457,7 @@ void OSD::ShardedOpWQ::_enqueue_front(OpQueueItem&& item)
   sdata->_enqueue_front(std::move(item), osd->op_prio_cutoff);
   sdata->shard_lock.unlock();
   std::lock_guard l{sdata->sdata_wait_lock};
-  dout(20) << __func__ << " wake up due to multi op : " << osd->inflight_num << dendl;
+   dout(20) << __func__ << " wake up due to multi op : " << sdata->inflight_num << dendl;
   sdata->sdata_cond.notify_one();
 }
 

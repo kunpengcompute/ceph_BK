@@ -221,7 +221,7 @@ struct Task {
         auto buf = reinterpret_cast<data_cache_buf *>(io_request.extra_segs[i]);
         queue_data->data_buf_list.push_front(*buf);
       }
-      delete io_request.extra_segs;
+      delete[] io_request.extra_segs;
     } else if (io_request.nseg) {
       for (uint16_t i = 0; i < io_request.nseg; i++) {
         auto buf = reinterpret_cast<data_cache_buf *>(io_request.inline_segs[i]);

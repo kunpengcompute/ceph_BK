@@ -1144,6 +1144,7 @@ struct OSDShard {
   OSD *osd;
 
   string shard_name;
+  std::atomic<int> inflight_num {0};
 
   string sdata_wait_lock_name;
   ceph::mutex sdata_wait_lock;
@@ -1248,7 +1249,7 @@ struct OSDShard {
       osdmap_lock{make_mutex(osdmap_lock_name)},
       shard_lock_name(shard_name + "::shard_lock"),
       shard_lock{make_mutex(shard_lock_name)},
-      context_queue(sdata_wait_lock, sdata_cond) {
+      context_queue(sdata_wait_lock, sdata_cond, cct->_conf.get_val<bool>("osd_process_polling")) {
     if (opqueue == io_queue::weightedpriority) {
       pqueue = std::make_unique<
 	WeightedPriorityQueue<OpQueueItem,uint64_t>>(
@@ -1275,7 +1276,7 @@ class OSD : public Dispatcher,
   Mutex tick_timer_lock;
   SafeTimer tick_timer_without_osd_lock;
   std::string gss_ktfile_client{};
-  std::atomic<int> inflight_num {0};
+   bool osd_process_polling = false;
 
 public:
   // config observer bits

@@ -193,10 +193,12 @@ class ContextQueue {
   std::mutex q_mutex;
   ceph::mutex& mutex;
   ceph::condition_variable& cond;
+  bool polling = false;
 public:
   ContextQueue(ceph::mutex& mut,
-	       ceph::condition_variable& con)
-    : mutex(mut), cond(con) {}
+	       ceph::condition_variable& con,
+         bool is_polling = false)
+    : mutex(mut), cond(con), polling(is_polling){}
 
   void queue(list<Context *>& ls) {
     bool empty = false;
@@ -208,6 +210,11 @@ public:
       } else {
 	q.insert(q.end(), ls.begin(), ls.end());
       }
+    }
+
+    if (!polling && empty) {
+      std::scoped_lock l{mutex};
+      cond.notify_all();
     }
 
     ls.clear();
