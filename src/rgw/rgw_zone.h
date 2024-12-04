@@ -258,6 +258,7 @@ WRITE_CLASS_ENCODER(RGWZoneStorageClasses)
 
 struct RGWZonePlacementInfo {
   rgw_pool index_pool;
+  rgw_pool head_pool;
   rgw_pool data_extra_pool; /* if not set we should use data_pool */
   RGWZoneStorageClasses storage_classes;
   RGWBucketIndexType index_type;
@@ -267,6 +268,7 @@ struct RGWZonePlacementInfo {
   void encode(bufferlist& bl) const {
     ENCODE_START(7, 1, bl);
     encode(index_pool.to_str(), bl);
+    encode(head_pool.to_str(), bl);
     rgw_pool standard_data_pool = get_data_pool(RGW_STORAGE_CLASS_STANDARD);
     encode(standard_data_pool.to_str(), bl);
     encode(data_extra_pool.to_str(), bl);
@@ -280,9 +282,12 @@ struct RGWZonePlacementInfo {
   void decode(bufferlist::const_iterator& bl) {
     DECODE_START(7, bl);
     string index_pool_str;
+    string head_pool_str;
     string data_pool_str;
     decode(index_pool_str, bl);
     index_pool = rgw_pool(index_pool_str);
+    decode(head_pool_str, bl);
+    head_pool = rgw_pool(head_pool_str);
     decode(data_pool_str, bl);
     rgw_pool standard_data_pool(data_pool_str);
     if (struct_v >= 4) {
@@ -313,6 +318,14 @@ struct RGWZonePlacementInfo {
       return storage_classes.get_standard().data_pool.get_value_or(no_pool);
     }
     return data_extra_pool;
+  }
+
+  const rgw_pool& get_head_pool() const {
+    static rgw_pool no_pool;
+    if (head_pool.empty()) {
+      return storage_classes.get_standard().data_pool.get_value_or(no_pool);
+    }
+    return head_pool;
   }
   const rgw_pool& get_data_pool(const string& sc) const {
     const RGWZoneStorageClass *storage_class;
@@ -498,9 +511,9 @@ struct RGWZoneParams : RGWSystemMetaObj {
   }
 
   /*
-   * return data pool of the head object
+   * return pool of the data object
    */
-  bool get_head_data_pool(const rgw_placement_rule& placement_rule, const rgw_obj& obj, rgw_pool *pool) const {
+  bool get_data_pool(const rgw_placement_rule& placement_rule, const rgw_obj& obj, rgw_pool *pool) const {
     const rgw_data_placement_target& explicit_placement = obj.bucket.explicit_placement;
     if (!explicit_placement.data_pool.empty()) {
       if (!obj.in_extra_data) {
@@ -517,11 +530,33 @@ struct RGWZoneParams : RGWSystemMetaObj {
     if (iter == placement_pools.end()) {
       return false;
     }
+    
     if (!obj.in_extra_data) {
       *pool = iter->second.get_data_pool(placement_rule.storage_class);
     } else {
       *pool = iter->second.get_data_extra_pool();
     }
+    return true;
+  }
+
+  /*
+   * return pool of the head object
+   */
+  bool get_head_pool(const rgw_placement_rule& placement_rule, const rgw_obj& obj, rgw_pool *pool) const {
+    const rgw_data_placement_target& explicit_placement = obj.bucket.explicit_placement;
+    if (!explicit_placement.data_pool.empty()) {  // not currently used, add this part if necessary
+      *pool = explicit_placement.data_pool;
+      return true;
+    }
+    if (placement_rule.empty()) {
+      return false;
+    }
+    auto iter = placement_pools.find(placement_rule.name);
+    if (iter == placement_pools.end()) {
+      return false;
+    }
+    
+    *pool = iter->second.get_head_pool();
     return true;
   }
 

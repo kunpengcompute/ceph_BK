@@ -193,59 +193,51 @@ int ManifestObjectProcessor::next(uint64_t offset, uint64_t *pstripe_size)
 int AtomicObjectProcessor::process_first_chunk(bufferlist&& data,
                                                DataProcessor **processor)
 {
-  first_chunk = std::move(data);
+  // write the first chunk of the head object as part of an exclusive create,
+  // then drain to wait for the result in case of EEXIST
+  int r = writer.write_exclusive(data);   // maybe it can be concurrent with the following data objects
+  if (r == -EEXIST) {   // random string has the same name.
+    char buf[33];
+    gen_rand_alphanumeric(store->ctx(), buf, sizeof(buf) - 1);
+
+    string oid_prefix = ".";
+    oid_prefix.append(buf);
+    oid_prefix.append("_");
+
+    manifest.set_prefix(oid_prefix);
+
+    r = prepare();
+    if (r < 0) {
+      return r;
+    }
+    // resubmit the write op on the new first object
+    r = writer.write_exclusive(data);
+  }
+  if (r < 0) {
+    return r;
+  }
+
   *processor = &stripe;
   return 0;
 }
 
 int AtomicObjectProcessor::prepare()
 {
-  uint64_t max_head_chunk_size;
-  uint64_t head_max_size;
-  uint64_t chunk_size = 0;
+  const uint64_t default_stripe_size = store->ctx()->_conf->rgw_obj_stripe_size;
+  uint64_t chunk_size;
+  uint64_t stripe_size;
   uint64_t alignment;
-  rgw_pool head_pool;
 
-  if (!store->get_obj_data_pool(bucket_info.placement_rule, head_obj, &head_pool)) {
-    return -EIO;
-  }
-
-  int r = store->get_max_chunk_size(head_pool, &max_head_chunk_size, &alignment);
+  int r = store->get_max_chunk_size(tail_placement_rule, head_obj, &chunk_size, &alignment);
   if (r < 0) {
+    ldout(store->ctx(), 0) << "ERROR: unexpected: get_max_chunk_size(): placement_rule=" << 
+      bucket_info.placement_rule.to_str() << " obj=" << head_obj <<" returned r=" << r << dendl;
     return r;
   }
 
-  bool same_pool = true;
-
-  if (bucket_info.placement_rule != tail_placement_rule) {
-    rgw_pool tail_pool;
-    if (!store->get_obj_data_pool(tail_placement_rule, head_obj, &tail_pool)) {
-      return -EIO;
-    }
-
-    if (tail_pool != head_pool) {
-      same_pool = false;
-
-      r = store->get_max_chunk_size(tail_pool, &chunk_size);
-      if (r < 0) {
-        return r;
-      }
-
-      head_max_size = 0;
-    }
-  }
-
-  if (same_pool) {
-    head_max_size = max_head_chunk_size;
-    chunk_size = max_head_chunk_size;
-  }
-
-  uint64_t stripe_size;
-  const uint64_t default_stripe_size = store->ctx()->_conf->rgw_obj_stripe_size;
-
   store->get_max_aligned_size(default_stripe_size, alignment, &stripe_size);
 
-  manifest.set_trivial_rule(head_max_size, stripe_size);
+  manifest.set_trivial_rule(0, stripe_size);
 
   r = manifest_gen.create_begin(store->ctx(), &manifest,
                                 bucket_info.placement_rule,
@@ -257,11 +249,12 @@ int AtomicObjectProcessor::prepare()
 
   rgw_raw_obj stripe_obj = manifest_gen.get_cur_obj(store);
 
-  r = writer.set_stripe_obj(stripe_obj);
+  r = writer.set_stripe_obj(stripe_obj);    // open data pool
   if (r < 0) {
     return r;
   }
 
+  uint64_t head_max_size = std::min(chunk_size, stripe_size);
   set_head_chunk_size(head_max_size);
   // initialize the processors
   chunk = ChunkProcessor(&writer, chunk_size);
@@ -281,7 +274,7 @@ int AtomicObjectProcessor::complete(size_t accounted_size,
                                     rgw_zone_set *zones_trace,
                                     bool *pcanceled)
 {
-  int r = writer.drain();
+  int r = writer.drain();   // wait for non first rados write complete
   if (r < 0) {
     return r;
   }
@@ -300,7 +293,6 @@ int AtomicObjectProcessor::complete(size_t accounted_size,
 
   RGWRados::Object::Write obj_op(&op_target);
 
-  obj_op.meta.data = &first_chunk;
   obj_op.meta.manifest = &manifest;
   obj_op.meta.ptag = &unique_tag; /* use req_id as operation tag */
   obj_op.meta.if_match = if_match;

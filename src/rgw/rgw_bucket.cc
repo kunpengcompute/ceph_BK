@@ -693,9 +693,6 @@ int rgw_remove_bucket_bypass_gc(RGWRados *store, rgw_bucket& bucket,
         RGWObjManifest& manifest = astate->manifest;
         RGWObjManifest::obj_iterator miter = manifest.obj_begin();
         rgw_obj head_obj = manifest.get_obj();
-        rgw_raw_obj raw_head_obj;
-        store->obj_to_raw(info.placement_rule, head_obj, &raw_head_obj);
-
 
         for (; miter != manifest.obj_end() && max_aio--; ++miter) {
           if (!max_aio) {
@@ -708,11 +705,6 @@ int rgw_remove_bucket_bypass_gc(RGWRados *store, rgw_bucket& bucket,
           }
 
           rgw_raw_obj last_obj = miter.get_location().get_raw_obj(store);
-          if (last_obj == raw_head_obj) {
-            // have the head obj deleted at the end
-            continue;
-          }
-
           ret = store->delete_raw_obj_aio(last_obj, handles);
           if (ret < 0) {
             lderr(store->ctx()) << "ERROR: delete obj aio failed with " << ret << dendl;

@@ -35,6 +35,7 @@ std::string RGW_DEFAULT_ZONEGROUP_ROOT_POOL = "rgw.root";
 std::string RGW_DEFAULT_REALM_ROOT_POOL = "rgw.root";
 std::string RGW_DEFAULT_PERIOD_ROOT_POOL = "rgw.root";
 std::string default_bucket_index_pool_suffix = "rgw.buckets.index";
+std::string default_bucket_head_pool_suffix = "rgw.buckets.head";
 std::string default_storage_extra_pool_suffix = "rgw.buckets.non-ec";
 std::string avail_pools = ".pools.avail";
 std::string default_storage_pool_suffix = "rgw.buckets.data";
@@ -1625,6 +1626,8 @@ int RGWZoneParams::fix_pool_names()
   for(auto& iter : placement_pools) {
     iter.second.index_pool = fix_zone_pool_dup(pools, name, "." + default_bucket_index_pool_suffix,
                                                iter.second.index_pool);
+    iter.second.head_pool = fix_zone_pool_dup(pools, name, "." + default_bucket_head_pool_suffix,
+                                               iter.second.head_pool);
     for (auto& pi : iter.second.storage_classes.get_all()) {
       if (pi.second.data_pool) {
         rgw_pool& pool = pi.second.data_pool.get();
@@ -1651,6 +1654,7 @@ int RGWZoneParams::create(bool exclusive)
     /* a new system, let's set new placement info */
     RGWZonePlacementInfo default_placement;
     default_placement.index_pool = name + "." + default_bucket_index_pool_suffix;
+    default_placement.head_pool = name + "." + default_bucket_head_pool_suffix;
     rgw_pool pool = name + "." + default_storage_pool_suffix;
     default_placement.storage_classes.set_storage_class(RGW_STORAGE_CLASS_STANDARD, &pool, nullptr);
     default_placement.data_extra_pool = name + "." + default_storage_extra_pool_suffix;

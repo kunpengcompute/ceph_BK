@@ -91,9 +91,6 @@ void RGWObjManifest::obj_iterator::seek(uint64_t o)
     cur_stripe = (ofs - part_ofs) / rule.stripe_max_size;
 
     stripe_ofs = part_ofs + cur_stripe * rule.stripe_max_size;
-    if (!cur_part_id && manifest->get_head_size() > 0) {
-      cur_stripe++;
-    }
   } else {
     cur_stripe = 0;
     stripe_ofs = part_ofs;
@@ -175,16 +172,10 @@ void RGWObjManifest::get_implicit_location(uint64_t cur_part_id, uint64_t cur_st
   }
 
   if (!cur_part_id) {
-    if (ofs < max_head_size) {
-      location->set_placement_rule(head_placement_rule);
-      *location = obj;
-      return;
-    } else {
-      char buf[16];
-      snprintf(buf, sizeof(buf), "%d", (int)cur_stripe);
-      oid += buf;
-      ns = shadow_ns;
-    }
+    char buf[16];
+    snprintf(buf, sizeof(buf), "%d", (int)cur_stripe);
+    oid += buf;
+    ns = shadow_ns;
   } else {
     char buf[32];
     if (cur_stripe == 0) {
