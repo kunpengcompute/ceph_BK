@@ -3825,7 +3825,7 @@ void RGWPutObj::execute()
   fst = copy_source_range_fst;
 
   // no filters by default
-  DataProcessor *filter = processor.get();
+  DataProcessor *filter = processor.get();    // ObjectProcessor
 
   const auto& compression_type = store->svc.zone->get_zone_params().get_compression_type(*pdest_placement);
   CompressorRef plugin;
@@ -3882,7 +3882,7 @@ void RGWPutObj::execute()
     /* update torrrent */
     torrent.update(data);
 
-    op_ret = filter->process(std::move(data), ofs);
+    op_ret = filter->process(std::move(data), ofs);   // HeadObjectProcessor::process
     if (op_ret < 0) {
       ldpp_dout(this, 20) << "processor->process() returned ret="
           << op_ret << dendl;

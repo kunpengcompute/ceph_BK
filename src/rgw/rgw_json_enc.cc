@@ -1010,6 +1010,7 @@ void RGWZoneStorageClasses::decode_json(JSONObj *obj)
 void RGWZonePlacementInfo::dump(Formatter *f) const
 {
   encode_json("index_pool", index_pool, f);
+  encode_json("head_pool", head_pool, f);
   encode_json("storage_classes", storage_classes, f);
   encode_json("data_extra_pool", data_extra_pool, f);
   encode_json("index_type", (uint32_t)index_type, f);
@@ -1021,6 +1022,7 @@ void RGWZonePlacementInfo::dump(Formatter *f) const
 void RGWZonePlacementInfo::decode_json(JSONObj *obj)
 {
   JSONDecoder::decode_json("index_pool", index_pool, obj);
+  JSONDecoder::decode_json("head_pool", head_pool, obj);
   JSONDecoder::decode_json("storage_classes", storage_classes, obj);
   JSONDecoder::decode_json("data_extra_pool", data_extra_pool, obj);
   uint32_t it;

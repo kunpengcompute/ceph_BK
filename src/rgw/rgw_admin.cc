@@ -303,6 +303,7 @@ void usage()
   cout << "   --tags-rm=<list>          list of tags to remove for zonegroup placement modify command\n";
   cout << "   --endpoints=<list>        zone endpoints\n";
   cout << "   --index-pool=<pool>       placement target index pool\n";
+  cout << "   --head-pool=<pool>        placement target head pool\n";
   cout << "   --data-pool=<pool>        placement target data pool\n";
   cout << "   --data-extra-pool=<pool>  placement target data extra (non-ec) pool\n";
   cout << "   --placement-index-type=<type>\n";
@@ -2898,6 +2899,7 @@ int main(int argc, const char **argv)
   map<string, string, ltstr_nocase> tier_config_rm;
 
   boost::optional<string> index_pool;
+  boost::optional<string> head_pool;
   boost::optional<string> data_pool;
   boost::optional<string> data_extra_pool;
   RGWBucketIndexType placement_index_type = RGWBIType_Normal;
@@ -3204,6 +3206,8 @@ int main(int argc, const char **argv)
       parse_tier_config_param(val, tier_config_rm);
     } else if (ceph_argparse_witharg(args, i, &val, "--index-pool", (char*)NULL)) {
       index_pool = val;
+    } else if (ceph_argparse_witharg(args, i, &val, "--head-pool", (char*)NULL)) {
+      head_pool = val;
     } else if (ceph_argparse_witharg(args, i, &val, "--data-pool", (char*)NULL)) {
       data_pool = val;
     } else if (ceph_argparse_witharg(args, i, &val, "--data-extra-pool", (char*)NULL)) {
@@ -4880,6 +4884,7 @@ int main(int argc, const char **argv)
           RGWZonePlacementInfo& info = zone.placement_pools[placement_id];
 
 	  string opt_index_pool = index_pool.value_or(string());
+    string opt_head_pool = head_pool.value_or(string());
 	  string opt_data_pool = data_pool.value_or(string());
 
 	  if (!opt_index_pool.empty()) {
@@ -4888,6 +4893,15 @@ int main(int argc, const char **argv)
 
 	  if (info.index_pool.empty()) {
             cerr << "ERROR: index pool not configured, need to specify --index-pool" << std::endl;
+            return EINVAL;
+	  }
+
+    if (!opt_head_pool.empty()) {
+	    info.head_pool = opt_head_pool;
+	  }
+
+	  if (info.head_pool.empty()) {
+            cerr << "ERROR: head pool not configured, need to specify --head-pool" << std::endl;
             return EINVAL;
 	  }
 

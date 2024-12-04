@@ -115,7 +115,7 @@ static bool rgw_get_obj_data_pool(const RGWZoneGroup& zonegroup, const RGWZonePa
                                   const rgw_placement_rule& head_placement_rule,
                                   const rgw_obj& obj, rgw_pool *pool)
 {
-  if (!zone_params.get_head_data_pool(head_placement_rule, obj, pool)) {
+  if (!zone_params.get_data_pool(head_placement_rule, obj, pool)) {
     RGWZonePlacementInfo placement;
     if (!zone_params.get_placement(zonegroup.default_placement.name, &placement)) {
       return false;
@@ -126,6 +126,22 @@ static bool rgw_get_obj_data_pool(const RGWZoneGroup& zonegroup, const RGWZonePa
     } else {
       *pool = placement.get_data_extra_pool();
     }
+  }
+
+  return true;
+}
+
+static bool rgw_get_obj_head_pool(const RGWZoneGroup& zonegroup, const RGWZoneParams& zone_params,
+                                  const rgw_placement_rule& head_placement_rule,
+                                  const rgw_obj& obj, rgw_pool *pool)
+{
+  if (!zone_params.get_head_pool(head_placement_rule, obj, pool)) {
+    RGWZonePlacementInfo placement;
+    if (!zone_params.get_placement(zonegroup.default_placement.name, &placement)) {
+      return false;
+    }
+
+    *pool = placement.get_head_pool();
   }
 
   return true;
@@ -2947,6 +2963,11 @@ bool RGWRados::get_obj_data_pool(const rgw_placement_rule& placement_rule, const
   return rgw_get_obj_data_pool(svc.zone->get_zonegroup(), svc.zone->get_zone_params(), placement_rule, obj, pool);
 }
 
+bool RGWRados::get_obj_head_pool(const rgw_placement_rule& placement_rule, const rgw_obj& obj, rgw_pool *pool)
+{
+  return rgw_get_obj_head_pool(svc.zone->get_zonegroup(), svc.zone->get_zone_params(), placement_rule, obj, pool);
+}
+
 bool RGWRados::obj_to_raw(const rgw_placement_rule& placement_rule, const rgw_obj& obj, rgw_raw_obj *raw_obj)
 {
   get_obj_bucket_and_oid_loc(obj, raw_obj->oid, raw_obj->loc);
@@ -2954,7 +2975,14 @@ bool RGWRados::obj_to_raw(const rgw_placement_rule& placement_rule, const rgw_ob
   return get_obj_data_pool(placement_rule, obj, &raw_obj->pool);
 }
 
-int RGWRados::get_obj_head_ioctx(const RGWBucketInfo& bucket_info, const rgw_obj& obj, librados::IoCtx *ioctx)
+bool RGWRados::obj_to_head_raw(const rgw_placement_rule& placement_rule, const rgw_obj& obj, rgw_raw_obj *raw_obj)
+{
+  get_obj_bucket_and_oid_loc(obj, raw_obj->oid, raw_obj->loc);
+
+  return get_obj_head_pool(placement_rule, obj, &raw_obj->pool);
+}
+
+int RGWRados::get_obj_data_ioctx(const RGWBucketInfo& bucket_info, const rgw_obj& obj, librados::IoCtx *ioctx)
 {
   string oid, key;
   get_obj_bucket_and_oid_loc(obj, oid, key);
@@ -2975,12 +3003,53 @@ int RGWRados::get_obj_head_ioctx(const RGWBucketInfo& bucket_info, const rgw_obj
   return 0;
 }
 
-int RGWRados::get_obj_head_ref(const RGWBucketInfo& bucket_info, const rgw_obj& obj, rgw_rados_ref *ref)
+int RGWRados::get_obj_head_ioctx(const RGWBucketInfo& bucket_info, const rgw_obj& obj, librados::IoCtx *ioctx)
+{
+  string oid, key;
+  get_obj_bucket_and_oid_loc(obj, oid, key);
+
+  rgw_pool pool;
+  if (!get_obj_head_pool(bucket_info.placement_rule, obj, &pool)) {
+    ldout(cct, 0) << "ERROR: cannot get data pool for obj=" << obj << ", probably misconfiguration" << dendl;
+    return -EIO;
+  }
+
+  int r = open_pool_ctx(pool, *ioctx, false);
+  if (r < 0) {
+    return r;
+  }
+
+  ioctx->locator_set_key(key);
+
+  return 0;
+}
+
+int RGWRados::get_obj_data_ref(const RGWBucketInfo& bucket_info, const rgw_obj& obj, rgw_rados_ref *ref)
 {
   get_obj_bucket_and_oid_loc(obj, ref->obj.oid, ref->obj.loc);
 
   rgw_pool pool;
   if (!get_obj_data_pool(bucket_info.placement_rule, obj, &pool)) {
+    ldout(cct, 0) << "ERROR: cannot get data pool for obj=" << obj << ", probably misconfiguration" << dendl;
+    return -EIO;
+  }
+
+  int r = open_pool_ctx(pool, ref->ioctx, false);
+  if (r < 0) {
+    return r;
+  }
+
+  ref->ioctx.locator_set_key(ref->obj.loc);
+
+  return 0;
+}
+
+int RGWRados::get_obj_head_ref(const RGWBucketInfo& bucket_info, const rgw_obj& obj, rgw_rados_ref *ref)
+{
+  get_obj_bucket_and_oid_loc(obj, ref->obj.oid, ref->obj.loc);
+
+  rgw_pool pool;
+  if (!get_obj_head_pool(bucket_info.placement_rule, obj, &pool)) {
     ldout(cct, 0) << "ERROR: cannot get data pool for obj=" << obj << ", probably misconfiguration" << dendl;
     return -EIO;
   }
@@ -3040,7 +3109,14 @@ int RGWRados::fix_head_obj_locator(const RGWBucketInfo& bucket_info, bool copy_o
 
   librados::IoCtx ioctx;
 
-  int ret = get_obj_head_ioctx(bucket_info, obj, &ioctx);
+  bool is_head = (key.ns == "");
+  int ret;
+
+  if (is_head) {
+    ret = get_obj_head_ioctx(bucket_info, obj, &ioctx);
+  } else {
+    ret = get_obj_data_ioctx(bucket_info, obj, &ioctx);
+  }
   if (ret < 0) {
     cerr << "ERROR: get_obj_head_ioctx() returned ret=" << ret << std::endl;
     return ret;
@@ -3183,13 +3259,19 @@ int RGWRados::fix_tail_obj_locator(const RGWBucketInfo& bucket_info, rgw_obj_key
 {
   const rgw_bucket& bucket = bucket_info.bucket;
   rgw_obj obj(bucket, key);
+  bool is_head = (key.ns == "");
 
   if (need_fix) {
     *need_fix = false;
   }
 
   rgw_rados_ref ref;
-  int r = get_obj_head_ref(bucket_info, obj, &ref);
+  int r;
+  if (is_head) {
+    r = get_obj_head_ref(bucket_info, obj, &ref);
+  } else {
+    r = get_obj_data_ref(bucket_info, obj, &ref);
+  }
   if (r < 0) {
     return r;
   }
@@ -3612,6 +3694,7 @@ int RGWRados::Object::Write::_do_write_meta(uint64_t size, uint64_t accounted_si
     return r;
 
   rgw_obj& obj = target->get_obj();
+  bool is_head = (obj.key.ns == "");
 
   if (obj.get_oid().empty()) {
     ldout(store->ctx(), 0) << "ERROR: " << __func__ << "(): cannot write object with empty name" << dendl;
@@ -3619,7 +3702,11 @@ int RGWRados::Object::Write::_do_write_meta(uint64_t size, uint64_t accounted_si
   }
 
   rgw_rados_ref ref;
-  r = store->get_obj_head_ref(target->get_bucket_info(), obj, &ref);
+  if (is_head) {
+    r = store->get_obj_head_ref(target->get_bucket_info(), obj, &ref);
+  } else {
+    r = store->get_obj_data_ref(target->get_bucket_info(), obj, &ref);
+  }
   if (r < 0)
     return r;
 
@@ -3658,7 +3745,7 @@ int RGWRados::Object::Write::_do_write_meta(uint64_t size, uint64_t accounted_si
   struct timespec mtime_ts = real_clock::to_timespec(meta.set_mtime);
   op.mtime2(&mtime_ts);
 
-  if (meta.data) {
+  if (meta.data && meta.data->length()) {
     /* if we want to overwrite the data, we also want to overwrite the
        xattrs, so just remove the object */
     op.write_full(*meta.data);
@@ -5214,12 +5301,8 @@ int RGWRados::Object::complete_atomic_modification()
 void RGWRados::update_gc_chain(rgw_obj& head_obj, RGWObjManifest& manifest, cls_rgw_obj_chain *chain)
 {
   RGWObjManifest::obj_iterator iter;
-  rgw_raw_obj raw_head;
-  obj_to_raw(manifest.get_head_placement_rule(), head_obj, &raw_head);
   for (iter = manifest.obj_begin(); iter != manifest.obj_end(); ++iter) {
     const rgw_raw_obj& mobj = iter.get_location().get_raw_obj(this);
-    if (mobj == raw_head)
-      continue;
     cls_rgw_obj_key key(mobj.oid);
     chain->push_obj(mobj.pool.to_str(), key, mobj.loc);
   }
@@ -5548,16 +5631,20 @@ int RGWRados::Object::Delete::delete_obj()
     return 0;
   }
 
+  RGWObjState *state;
+  int r = target->get_state(&state, false);
+  if (r < 0)
+    return r;
+
   rgw_rados_ref ref;
-  int r = store->get_obj_head_ref(target->get_bucket_info(), obj, &ref);
+  if (state->has_manifest) {
+    r = store->get_obj_head_ref(target->get_bucket_info(), obj, &ref);
+  } else {
+    r = store->get_obj_data_ref(target->get_bucket_info(), obj, &ref);
+  }
   if (r < 0) {
     return r;
   }
-
-  RGWObjState *state;
-  r = target->get_state(&state, false);
-  if (r < 0)
-    return r;
 
   ObjectWriteOperation op;
 
@@ -5807,12 +5894,17 @@ int RGWRados::get_obj_state_impl(RGWObjectCtx *rctx, const RGWBucketInfo& bucket
   s->obj = obj;
 
   rgw_raw_obj raw_obj;
-  obj_to_raw(bucket_info.placement_rule, obj, &raw_obj);
-
+  bool is_head = (obj.key.ns == "");   // non-head rados establishment ns(multipart or shadow)
   int r = -ENOENT;
 
   if (!assume_noent) {
-    r = RGWRados::raw_obj_stat(raw_obj, &s->size, &s->mtime, &s->epoch, &s->attrset, (s->prefetch_data ? &s->data : NULL), NULL);
+    if (!is_head) {
+      obj_to_raw(bucket_info.placement_rule, obj, &raw_obj);
+      r = RGWRados::raw_obj_stat(raw_obj, &s->size, &s->mtime, &s->epoch, &s->attrset, (s->prefetch_data ? &s->data : NULL), NULL);
+    } else {
+      obj_to_head_raw(bucket_info.placement_rule, obj, &raw_obj);
+      r = RGWRados::raw_obj_stat(raw_obj, &s->size, &s->mtime, &s->epoch, &s->attrset, NULL, NULL);
+    }
   }
 
   if (r == -ENOENT) {
@@ -6024,8 +6116,14 @@ int RGWRados::Object::Stat::stat_async()
   string oid;
   string loc;
   get_obj_bucket_and_oid_loc(obj, oid, loc);
+  bool is_head = (obj.key.ns == "");
+  int r;
 
-  int r = store->get_obj_head_ioctx(source->get_bucket_info(), obj, &state.io_ctx);
+  if (is_head) {
+    r = store->get_obj_head_ioctx(source->get_bucket_info(), obj, &state.io_ctx);
+  } else {
+    r = store->get_obj_data_ioctx(source->get_bucket_info(), obj, &state.io_ctx);
+  }
   if (r < 0) {
     return r;
   }
@@ -6240,23 +6338,28 @@ int RGWRados::set_attrs(void *ctx, const RGWBucketInfo& bucket_info, rgw_obj& sr
     obj.key.instance.clear();
   }
 
-  rgw_rados_ref ref;
-  int r = get_obj_head_ref(bucket_info, obj, &ref);
-  if (r < 0) {
-    return r;
-  }
   RGWObjectCtx *rctx = static_cast<RGWObjectCtx *>(ctx);
 
   ObjectWriteOperation op;
   RGWObjState *state = NULL;
 
-  r = append_atomic_test(rctx, bucket_info, obj, op, &state);
+  int r = append_atomic_test(rctx, bucket_info, obj, op, &state);
   if (r < 0)
     return r;
 
   // ensure null version object exist
   if (src_obj.key.instance == "null" && !state->has_manifest) {
     return -ENOENT;
+  }
+
+  rgw_rados_ref ref;
+  if (state->has_manifest) {
+    r = get_obj_head_ref(bucket_info, obj, &ref);
+  } else {
+    r = get_obj_data_ref(bucket_info, obj, &ref);
+  }
+  if (r < 0) {
+    return r;
   }
 
   map<string, bufferlist>::iterator iter;
@@ -6387,14 +6490,22 @@ int RGWRados::Object::Read::prepare()
   }
 
   const RGWBucketInfo& bucket_info = source->get_bucket_info();
+  bool is_head = (astate->obj.key.ns == "");
 
   state.obj = astate->obj;
-  store->obj_to_raw(bucket_info.placement_rule, state.obj, &state.head_obj);
+  if (is_head) {
+    store->obj_to_head_raw(bucket_info.placement_rule, state.obj, &state.head_obj);
+    state.cur_pool = state.head_obj.pool;
+    state.cur_ioctx = &state.io_ctxs[state.cur_pool];
 
-  state.cur_pool = state.head_obj.pool;
-  state.cur_ioctx = &state.io_ctxs[state.cur_pool];
+    r = store->get_obj_head_ioctx(bucket_info, state.obj, state.cur_ioctx);
+  } else {
+    store->obj_to_raw(bucket_info.placement_rule, state.obj, &state.head_obj);
+    state.cur_pool = state.head_obj.pool;
+    state.cur_ioctx = &state.io_ctxs[state.cur_pool];
 
-  r = store->get_obj_head_ioctx(bucket_info, state.obj, state.cur_ioctx);
+    r = store->get_obj_data_ioctx(bucket_info, state.obj, state.cur_ioctx);
+  }
   if (r < 0) {
     return r;
   }
@@ -6950,6 +7061,7 @@ int RGWRados::iterate_obj(RGWObjectCtx& obj_ctx,
     len = end - ofs + 1;
 
   if (astate->has_manifest) {
+    reading_from_head = false;
     /* now get the relevant object stripe */
     RGWObjManifest::obj_iterator iter = astate->manifest.obj_find(ofs);
 
@@ -6968,7 +7080,6 @@ int RGWRados::iterate_obj(RGWObjectCtx& obj_ctx,
           read_len = max_chunk_size;
         }
 
-        reading_from_head = (read_obj == head_obj);
         r = cb(read_obj, ofs, read_ofs, read_len, reading_from_head, astate, arg);
 	if (r < 0) {
 	  return r;
@@ -6999,7 +7110,13 @@ int RGWRados::iterate_obj(RGWObjectCtx& obj_ctx,
 int RGWRados::obj_operate(const RGWBucketInfo& bucket_info, const rgw_obj& obj, ObjectWriteOperation *op)
 {
   rgw_rados_ref ref;
-  int r = get_obj_head_ref(bucket_info, obj, &ref);
+  int r;
+  bool is_head = (obj.key.ns == "");
+  if (is_head) {
+    r = get_obj_head_ref(bucket_info, obj, &ref);
+  } else {
+    r = get_obj_data_ref(bucket_info, obj, &ref);
+  }
   if (r < 0) {
     return r;
   }
@@ -7010,7 +7127,13 @@ int RGWRados::obj_operate(const RGWBucketInfo& bucket_info, const rgw_obj& obj, 
 int RGWRados::obj_operate(const RGWBucketInfo& bucket_info, const rgw_obj& obj, ObjectReadOperation *op)
 {
   rgw_rados_ref ref;
-  int r = get_obj_head_ref(bucket_info, obj, &ref);
+  int r;
+  bool is_head = (obj.key.ns == "");
+  if (is_head) {
+    r = get_obj_head_ref(bucket_info, obj, &ref);
+  } else {
+    r = get_obj_data_ref(bucket_info, obj, &ref);
+  }
   if (r < 0) {
     return r;
   }
@@ -7278,7 +7401,13 @@ int RGWRados::bucket_index_link_olh(const RGWBucketInfo& bucket_info, RGWObjStat
                                     rgw_zone_set *_zones_trace, bool log_data_change)
 {
   rgw_rados_ref ref;
-  int r = get_obj_head_ref(bucket_info, obj_instance, &ref);
+  bool is_head = (obj_instance.key.ns == "");
+  int r;
+  if (is_head) {
+    r = get_obj_head_ref(bucket_info, obj_instance, &ref);
+  } else {
+    r = get_obj_data_ref(bucket_info, obj_instance, &ref);
+  }
   if (r < 0) {
     return r;
   }
@@ -7323,7 +7452,13 @@ int RGWRados::bucket_index_unlink_instance(const RGWBucketInfo& bucket_info, con
                                            const string& op_tag, const string& olh_tag, uint64_t olh_epoch, rgw_zone_set *_zones_trace)
 {
   rgw_rados_ref ref;
-  int r = get_obj_head_ref(bucket_info, obj_instance, &ref);
+  bool is_head = (obj_instance.key.ns == "");
+  int r;
+  if (is_head) {
+    r = get_obj_head_ref(bucket_info, obj_instance, &ref);
+  } else {
+    r = get_obj_data_ref(bucket_info, obj_instance, &ref);
+  }
   if (r < 0) {
     return r;
   }
@@ -7358,7 +7493,13 @@ int RGWRados::bucket_index_read_olh_log(const RGWBucketInfo& bucket_info, RGWObj
                                         bool *is_truncated)
 {
   rgw_rados_ref ref;
-  int r = get_obj_head_ref(bucket_info, obj_instance, &ref);
+  bool is_head = (obj_instance.key.ns == "");
+  int r;
+  if (is_head) {
+    r = get_obj_head_ref(bucket_info, obj_instance, &ref);
+  } else {
+    r = get_obj_data_ref(bucket_info, obj_instance, &ref);
+  }
   if (r < 0) {
     return r;
   }
@@ -7432,7 +7573,12 @@ int RGWRados::repair_olh(RGWObjState* state, const RGWBucketInfo& bucket_info,
     op.setxattr(RGW_ATTR_OLH_INFO, bl);
   }
   rgw_rados_ref ref;
-  r = get_obj_head_ref(bucket_info, obj, &ref);
+  bool is_head = (obj.key.ns == "");
+  if (is_head) {
+    r = get_obj_head_ref(bucket_info, obj, &ref);
+  } else {
+    r = get_obj_data_ref(bucket_info, obj, &ref);
+  }
   if (r < 0) {
     return r;
   }
@@ -7448,7 +7594,13 @@ int RGWRados::repair_olh(RGWObjState* state, const RGWBucketInfo& bucket_info,
 int RGWRados::bucket_index_trim_olh_log(const RGWBucketInfo& bucket_info, RGWObjState& state, const rgw_obj& obj_instance, uint64_t ver)
 {
   rgw_rados_ref ref;
-  int r = get_obj_head_ref(bucket_info, obj_instance, &ref);
+  bool is_head = (obj_instance.key.ns == "");
+  int r;
+  if (is_head) {
+    r = get_obj_head_ref(bucket_info, obj_instance, &ref);
+  } else {
+    r = get_obj_data_ref(bucket_info, obj_instance, &ref);
+  }
   if (r < 0) {
     return r;
   }
@@ -7483,7 +7635,13 @@ int RGWRados::bucket_index_trim_olh_log(const RGWBucketInfo& bucket_info, RGWObj
 int RGWRados::bucket_index_clear_olh(const RGWBucketInfo& bucket_info, RGWObjState& state, const rgw_obj& obj_instance)
 {
   rgw_rados_ref ref;
-  int r = get_obj_head_ref(bucket_info, obj_instance, &ref);
+  bool is_head = (obj_instance.key.ns == "");
+  int r;
+  if (is_head) {
+    r = get_obj_head_ref(bucket_info, obj_instance, &ref);
+  } else {
+    r = get_obj_data_ref(bucket_info, obj_instance, &ref);
+  }
   if (r < 0) {
     return r;
   }
@@ -7613,7 +7771,13 @@ int RGWRados::apply_olh_log(RGWObjectCtx& obj_ctx, RGWObjState& state, const RGW
   }
 
   rgw_rados_ref ref;
-  int r = get_obj_head_ref(bucket_info, obj, &ref);
+  bool is_head = (obj.key.ns == "");
+  int r;
+  if (is_head) {
+    r = get_obj_head_ref(bucket_info, obj, &ref);
+  } else {
+    r = get_obj_data_ref(bucket_info, obj, &ref);
+  }
   if (r < 0) {
     return r;
   }
@@ -7907,7 +8071,13 @@ void RGWRados::check_pending_olh_entries(map<string, bufferlist>& pending_entrie
 int RGWRados::remove_olh_pending_entries(const RGWBucketInfo& bucket_info, RGWObjState& state, const rgw_obj& olh_obj, map<string, bufferlist>& pending_attrs)
 {
   rgw_rados_ref ref;
-  int r = get_obj_head_ref(bucket_info, olh_obj, &ref);
+  bool is_head = (olh_obj.key.ns == "");
+  int r;
+  if (is_head) {
+    r = get_obj_head_ref(bucket_info, olh_obj, &ref);
+  } else {
+    r = get_obj_data_ref(bucket_info, olh_obj, &ref);
+  }
   if (r < 0) {
     return r;
   }
@@ -10294,7 +10464,13 @@ int RGWRados::delete_obj_aio(const rgw_obj& obj,
                              list<librados::AioCompletion *>& handles, bool keep_index_consistent)
 {
   rgw_rados_ref ref;
-  int ret = get_obj_head_ref(bucket_info, obj, &ref);
+  bool is_head = (obj.key.ns == "");
+  int ret;
+  if (is_head) {
+    ret = get_obj_head_ref(bucket_info, obj, &ref);
+  } else {
+    ret = get_obj_data_ref(bucket_info, obj, &ref);
+  }
   if (ret < 0) {
     lderr(cct) << "ERROR: failed to get obj ref with ret=" << ret << dendl;
     return ret;
