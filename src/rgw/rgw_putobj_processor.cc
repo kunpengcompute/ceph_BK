@@ -431,6 +431,7 @@ int MultipartObjectProcessor::complete(size_t accounted_size,
   op_target.set_versioning_disabled(true);
   RGWRados::Object::Write obj_op(&op_target);
 
+  op_target.set_meta_placement_rule(&tail_placement_rule);
   obj_op.meta.set_mtime = set_mtime;
   obj_op.meta.mtime = mtime;
   obj_op.meta.owner = owner;

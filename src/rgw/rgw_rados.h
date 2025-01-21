@@ -1255,6 +1255,7 @@ class RGWRados : public AdminSocketHook
   uint32_t bucket_index_max_shards;
 
   int get_obj_head_ioctx(const RGWBucketInfo& bucket_info, const rgw_obj& obj, librados::IoCtx *ioctx);
+  int get_obj_head_ref(const rgw_placement_rule& target_placement_rule, const rgw_obj& obj, rgw_rados_ref *ref);
   int get_obj_head_ref(const RGWBucketInfo& bucket_info, const rgw_obj& obj, rgw_rados_ref *ref);
   int get_system_obj_ref(const rgw_raw_obj& obj, rgw_rados_ref *ref);
   uint64_t max_bucket_id;
@@ -1504,6 +1505,8 @@ public:
 
     bool bs_initialized;
 
+    const rgw_placement_rule *pmeta_placement_rule;
+
   protected:
     int get_state(RGWObjState **pstate, bool follow_olh, bool assume_noent = false);
     void invalidate_state();
@@ -1516,7 +1519,8 @@ public:
     Object(RGWRados *_store, const RGWBucketInfo& _bucket_info, RGWObjectCtx& _ctx, const rgw_obj& _obj) : store(_store), bucket_info(_bucket_info),
                                                                                                ctx(_ctx), obj(_obj), bs(store),
                                                                                                state(NULL), versioning_disabled(false),
-                                                                                               bs_initialized(false) {}
+                                                                                               bs_initialized(false),
+                                                                                               pmeta_placement_rule(nullptr) {}
 
     RGWRados *get_store() { return store; }
     rgw_obj& get_obj() { return obj; }
@@ -1543,6 +1547,14 @@ public:
 
     bool versioning_enabled() {
       return (!versioning_disabled && bucket_info.versioning_enabled());
+    }
+
+    void set_meta_placement_rule(const rgw_placement_rule *p) {
+        pmeta_placement_rule = p;
+    }
+
+    const rgw_placement_rule& get_meta_placement_rule() {
+        return pmeta_placement_rule ? *pmeta_placement_rule : bucket_info.placement_rule;
     }
 
     struct Read {
