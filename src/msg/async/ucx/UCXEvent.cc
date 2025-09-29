@@ -2,10 +2,10 @@
 // vim: ts=8 sw=2 smarttab
 /*
  * Ceph - scalable distributed file system
+  *
+ * Copyright (C) 2015 XSky <haomai@xsky.com>
  *
- * Copyright (c) Huawei Technologies Co., Ltd. 2023-2023.
- *
- * Author: Chunsong Feng <fengchunsong@huawei.com>
+ * Author: Haomai Wang <haomaiwang@gmail.com>
  *
  * This is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
