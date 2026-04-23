@@ -1,0 +1,2680 @@
+diff -Nur ceph-14.2.8/ceph.spec ceph-14.2.8-ucx/ceph.spec
+--- ceph-14.2.8/ceph.spec	2020-03-03 01:51:36.000000000 +0800
++++ ceph-14.2.8-ucx/ceph.spec	2024-09-12 19:46:40.428873984 +0800
+@@ -1218,7 +1218,8 @@
+     -DWITH_RADOSGW_AMQP_ENDPOINT=OFF \
+ %endif
+     -DBOOST_J=$CEPH_SMP_NCPUS \
+-    -DWITH_GRAFANA=ON
++    -DWITH_GRAFANA=ON \
++    -DWITH_UCX=/usr
+ 
+ make "$CEPH_MFLAGS_JOBS"
+ 
+diff -Nur ceph-14.2.8/cmake/modules/FindUCX.cmake ceph-14.2.8-ucx/cmake/modules/FindUCX.cmake
+--- ceph-14.2.8/cmake/modules/FindUCX.cmake	1970-01-01 08:00:00.000000000 +0800
++++ ceph-14.2.8-ucx/cmake/modules/FindUCX.cmake	2024-09-12 19:46:40.476873984 +0800
+@@ -0,0 +1,37 @@
++# - Find ucx
++# Find the ucx library and includes
++#
++# UCX_INCLUDE_DIR - where to find ucp.h
++# UCX_LIBS - List of libraries when using ucx 
++# UCX_FOUND - True if ucx found.
++
++# sanity check
++
++message(STATUS "Looking for UCX in ${WITH_UCX}")
++if (WITH_UCX AND EXISTS ${WITH_UCX})
++    find_path(UCX_INCLUDE_DIR ucp/api/ucp.h HINTS "${WITH_UCX}/include")
++    find_library(UCP_LIBRARY ucp HINTS "${WITH_UCX}/lib")
++    find_library(UCS_LIBRARY ucs HINTS "${WITH_UCX}/lib")
++endif ()
++
++message (STATUS "ucx include ${UCX_INCLUDE_DIR}")
++
++message (STATUS "ucp lib ${UCP_LIBRARY}")
++message (STATUS "ucs lib ${UCS_LIBRARY}")
++
++if (UCP_LIBRARY)
++    if (WITH_UCX_DEBUG AND (${WITH_UCX_DEBUG} MATCHES "yes"))
++        set(UCX_DEBUG_FLAGS TRUE)
++    endif ()
++    set(UCX_LIBS
++        ${UCP_LIBRARY}
++        ${UCS_LIBRARY})
++endif (UCP_LIBRARY)
++
++include(FindPackageHandleStandardArgs)
++find_package_handle_standard_args(ucx DEFAULT_MSG UCX_LIBS UCX_INCLUDE_DIR)
++
++mark_as_advanced(
++    UCX_LIBS
++    UCX_INCLUDE_DIR
++)
+diff -Nur ceph-14.2.8/CMakeLists.txt ceph-14.2.8-ucx/CMakeLists.txt
+--- ceph-14.2.8/CMakeLists.txt	2020-03-03 01:49:20.000000000 +0800
++++ ceph-14.2.8-ucx/CMakeLists.txt	2024-09-12 19:46:40.428873984 +0800
+@@ -208,6 +208,16 @@
+   set(HAVE_RDMA TRUE)
+ endif()
+ 
++option(WITH_UCX "Enable UCX async messenger" OFF)
++if(WITH_UCX)
++#    message(FATAL_ERROR "With UCX is ${WITH_UCX}")
++  find_package(UCX REQUIRED)
++  set(HAVE_UCX ${UCX_FOUND})
++  message(STATUS "UCX_LIBS: ${UCX_LIBS}")
++else()
++    message(STATUS "UCX support is disabled")
++endif(WITH_UCX)
++
+ find_package(Backtrace)
+ 
+ # remote block storage
+diff -Nur ceph-14.2.8/install-deps.sh ceph-14.2.8-ucx/install-deps.sh
+--- ceph-14.2.8/install-deps.sh	2020-03-03 01:49:20.000000000 +0800
++++ ceph-14.2.8-ucx/install-deps.sh	2024-09-12 19:46:40.428873984 +0800
+@@ -318,7 +318,7 @@
+ 	if [ "$control" != "debian/control" ] ; then rm $control; fi
+ 	$SUDO apt-get install -y libxmlsec1 libxmlsec1-nss libxmlsec1-openssl libxmlsec1-dev
+         ;;
+-    centos|fedora|rhel|ol|virtuozzo)
++    centos|fedora|rhel|ol|virtuozzo|openEuler)
+         yumdnf="yum"
+         builddepcmd="yum-builddep -y --setopt=*.skip_if_unavailable=true"
+         if test "$(echo "$VERSION_ID >= 22" | bc)" -ne 0; then
+diff -Nur ceph-14.2.8/src/ceph_mgr.cc ceph-14.2.8-ucx/src/ceph_mgr.cc
+--- ceph-14.2.8/src/ceph_mgr.cc	2020-03-03 01:49:20.000000000 +0800
++++ ceph-14.2.8-ucx/src/ceph_mgr.cc	2024-09-12 19:46:40.136873984 +0800
+@@ -64,6 +64,7 @@
+   pick_addresses(g_ceph_context, CEPH_PICK_ADDRESS_PUBLIC);
+ 
+   global_init_daemonize(g_ceph_context);
++  g_ceph_context->notify_pre_fork();
+   global_init_chdir(g_ceph_context);
+   common_init_finish(g_ceph_context);
+ 
+diff -Nur ceph-14.2.8/src/ceph-volume/ceph_volume/util/encryption.py ceph-14.2.8-ucx/src/ceph-volume/ceph_volume/util/encryption.py
+--- ceph-14.2.8/src/ceph-volume/ceph_volume/util/encryption.py	2020-03-03 01:49:20.000000000 +0800
++++ ceph-14.2.8-ucx/src/ceph-volume/ceph_volume/util/encryption.py	2024-09-12 20:03:42.048873984 +0800
+@@ -137,8 +137,7 @@
+     )
+     if returncode != 0:
+         raise RuntimeError('Unable to retrieve dmcrypt secret')
+-    return ' '.join(stdout).strip()
+-
++    return ' '.join([i for i in stdout if not i.startswith("#")]).strip()
+ 
+ def write_lockbox_keyring(osd_id, osd_fsid, secret):
+     """
+diff -Nur ceph-14.2.8/src/ceph-volume/ceph_volume/util/prepare.py ceph-14.2.8-ucx/src/ceph-volume/ceph_volume/util/prepare.py
+--- ceph-14.2.8/src/ceph-volume/ceph_volume/util/prepare.py	2020-03-03 01:49:20.000000000 +0800
++++ ceph-14.2.8-ucx/src/ceph-volume/ceph_volume/util/prepare.py	2024-09-12 20:02:40.744873984 +0800
+@@ -168,8 +168,7 @@
+     )
+     if returncode != 0:
+         raise RuntimeError('Unable to create a new OSD id')
+-    return ' '.join(stdout).strip()
+-
++    return ' '.join([i for i in stdout if not i.startswith("#")]).strip()
+ 
+ def osd_id_available(osd_id):
+     """
+diff -Nur ceph-14.2.8/src/CMakeLists.txt ceph-14.2.8-ucx/src/CMakeLists.txt
+--- ceph-14.2.8/src/CMakeLists.txt	2020-03-03 01:49:20.000000000 +0800
++++ ceph-14.2.8-ucx/src/CMakeLists.txt	2024-09-12 19:46:40.336873984 +0800
+@@ -216,6 +216,15 @@
+   add_subdirectory(java)
+ endif()
+ 
++if(HAVE_UCX)
++    if (UCX_DEBUG_FLAGS)
++          set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -I${UCX_INCLUDE_DIR} -g -O0")
++          message(STATUS " adding UCX debugging flags...")
++    else ()
++          set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -I${UCX_INCLUDE_DIR}")
++          message(STATUS " adding UCX compilation flags...")
++    endif()
++endif(HAVE_UCX)
+ # Python stuff
+ option(WITH_PYTHON2 "build python2 bindings" ON)
+ if(WITH_PYTHON2)
+@@ -389,6 +398,10 @@
+   list(APPEND ceph_common_deps ${QATZIP_LIBRARIES})
+ endif()
+ 
++if(HAVE_UCX)
++  list(APPEND ceph_common_deps ${UCX_LIBS})
++endif()
++
+ if(WITH_DPDK)
+   list(APPEND ceph_common_deps common_async_dpdk)
+ endif()
+diff -Nur ceph-14.2.8/src/common/legacy_config_opts.h ceph-14.2.8-ucx/src/common/legacy_config_opts.h
+--- ceph-14.2.8/src/common/legacy_config_opts.h	2020-03-03 01:49:20.000000000 +0800
++++ ceph-14.2.8-ucx/src/common/legacy_config_opts.h	2024-09-12 19:46:39.932873984 +0800
+@@ -177,6 +177,13 @@
+ // just do ceph_abort() . Here we make it configurable.
+ OPTION(ms_max_accept_failures, OPT_INT)
+ 
++OPTION(ms_async_ucx_device, OPT_STR)
++OPTION(ms_async_ucx_tls, OPT_STR)
++OPTION(ms_async_ucx_zerocopy, OPT_BOOL)
++OPTION(ms_async_ucx_feature, OPT_STR)
++OPTION(ms_async_ucx_event_count, OPT_U64)
++OPTION(ms_async_ucx_event_polling, OPT_BOOL)
++
+ OPTION(ms_dpdk_port_id, OPT_INT)
+ SAFE_OPTION(ms_dpdk_coremask, OPT_STR)        // it is modified in unittest so that use SAFE_OPTION to declare 
+ OPTION(ms_dpdk_memory_channel, OPT_STR)
+diff -Nur ceph-14.2.8/src/common/options.cc ceph-14.2.8-ucx/src/common/options.cc
+--- ceph-14.2.8/src/common/options.cc	2020-03-03 01:49:20.000000000 +0800
++++ ceph-14.2.8-ucx/src/common/options.cc	2024-09-12 19:46:39.936873984 +0800
+@@ -1204,6 +1204,40 @@
+     .set_default("ib")
+     .set_description(""),
+ 
++    Option("ms_async_ucx_device", Option::TYPE_STR, Option::LEVEL_ADVANCED)
++    .set_default("mlx5_0:1")
++    .set_description(""),
++
++    Option("ms_async_ucx_tls", Option::TYPE_STR, Option::LEVEL_ADVANCED)
++    .set_default("rc")
++    .set_description(""),
++
++    Option("rdma_cm_source_addr", Option::TYPE_STR, Option::LEVEL_ADVANCED)
++    .set_default("")
++    .set_description(""),
++
++    Option("ms_async_ucx_max_recv", Option::TYPE_UINT, Option::LEVEL_ADVANCED)
++    .set_description("ucx maximum number of concurrent RDMA reads")
++    .set_default(10)
++    .add_service({"mon", "mds", "osd", "mgr"}),
++
++    Option("ms_async_ucx_zerocopy", Option::TYPE_BOOL, Option::LEVEL_ADVANCED)
++    .set_default(false)
++    .set_description(""),
++
++    Option("ms_async_ucx_event_count", Option::TYPE_UINT, Option::LEVEL_ADVANCED)
++    .set_description("Minimum number of consecutive events to be processed")
++    .set_default(3)
++    .add_service(""),
++
++    Option("ms_async_ucx_event_polling", Option::TYPE_BOOL, Option::LEVEL_ADVANCED)
++    .set_default(false)
++    .set_description(""),
++
++    Option("ms_async_ucx_feature", Option::TYPE_STR, Option::LEVEL_ADVANCED)
++    .set_default("am")
++    .set_description(""),
++
+     Option("ms_dpdk_port_id", Option::TYPE_INT, Option::LEVEL_ADVANCED)
+     .set_default(0)
+     .set_description(""),
+diff -Nur ceph-14.2.8/src/include/config-h.in.cmake ceph-14.2.8-ucx/src/include/config-h.in.cmake
+--- ceph-14.2.8/src/include/config-h.in.cmake	2020-03-03 01:49:20.000000000 +0800
++++ ceph-14.2.8-ucx/src/include/config-h.in.cmake	2024-09-12 19:46:40.424873984 +0800
+@@ -136,6 +136,9 @@
+ /* AsyncMessenger RDMA conditional compilation */
+ #cmakedefine HAVE_RDMA
+ 
++/* AsyncMessenger UCX conditional compilation */
++#cmakedefine HAVE_UCX
++
+ /* ibverbs experimental conditional compilation */
+ #cmakedefine HAVE_IBV_EXP
+ 
+diff -Nur ceph-14.2.8/src/msg/async/AsyncConnection.cc ceph-14.2.8-ucx/src/msg/async/AsyncConnection.cc
+--- ceph-14.2.8/src/msg/async/AsyncConnection.cc	2020-03-03 01:49:20.000000000 +0800
++++ ceph-14.2.8-ucx/src/msg/async/AsyncConnection.cc	2024-09-12 19:46:40.372873984 +0800
+@@ -186,6 +186,58 @@
+   }
+   return r;
+ }
++// nread == 0 Õý³£ÎÞÊý¾Ý
++// nread < 0 ³ö´í
++ssize_t AsyncConnection::zero_copy_read_bulk(ceph::bufferlist &bl, size_t length)
++{
++  ssize_t nread;
++  ssize_t total = 0;
++  do {
++    nread = cs.zero_copy_read(bl, length);
++    if (nread < 0) {
++      if (nread == -EAGAIN) {
++        nread = 0;
++      } else if (nread == -EINTR) {
++        nread = 1;// just read again
++      } else {
++        ldout(async_msgr->cct, 1) << __func__ << " reading from fd=" << cs.fd()
++                            << " : "<< nread << " " << strerror(nread) << dendl;
++        return -1;
++      }
++    } else if (nread == 0) {
++      ldout(async_msgr->cct, 1) << __func__ << " peer close file descriptor "
++                                << cs.fd() << dendl;
++      return -1;
++    } else {
++      total += nread;
++      if (bl.length() == length)
++       break;
++    }
++  } while(nread > 0);
++  ldout(async_msgr->cct, 20) << __func__
++                             << " read length " << total
++                             << " bl.length " << bl.length()
++                             << " expected length "<< length << dendl;    
++  return 0;
++}
++
++ssize_t AsyncConnection::zero_copy_read(ceph::bufferlist &bl, size_t length,
++                              std::function<void(ceph::bufferlist &bl, ssize_t)> callback) {
++  ldout(async_msgr->cct, 20) << __func__
++                             << (pendingReadLen ? " continue" : " start")
++                             << " len=" << length << dendl;                             
++  ssize_t r = zero_copy_read_bulk(bl, length);
++  if (r < 0)
++    return r;
++  if ((bl.length() < length)) {
++    zeroCopyReadCallback = callback;
++    pendingReadLen = length;
++    r = length - bl.length();
++    read_bl.swap(bl);
++    return r;
++  }
++  return 0;
++}
+ 
+ // Because this func will be called multi times to populate
+ // the needed buffer, so the passed in bufferptr must be the same.
+@@ -442,12 +494,20 @@
+ 
+     case STATE_CONNECTION_ESTABLISHED: {
+       if (pendingReadLen) {
+-        ssize_t r = read(*pendingReadLen, read_buffer, readCallback);
+-        if (r <= 0) { // read all bytes, or an error occured
+-          pendingReadLen.reset();
+-          char *buf_tmp = read_buffer;
+-          read_buffer = nullptr;
+-          readCallback(buf_tmp, r);
++        if (read_buffer) {
++          ssize_t r = read(*pendingReadLen, read_buffer, readCallback);
++          if (r <= 0) { // read all bytes, or an error occured
++            pendingReadLen.reset();
++            char *buf_tmp = read_buffer;
++            read_buffer = nullptr;
++            readCallback(buf_tmp, r);
++          }
++        } else {
++          ssize_t r = zero_copy_read_bulk(read_bl, *pendingReadLen);
++          if ((read_bl.length() == *pendingReadLen) || (r < 0)) { // read all bytes, or an error occured
++            pendingReadLen.reset();
++            zeroCopyReadCallback(read_bl, r);
++          }
+         }
+         return;
+       }
+diff -Nur ceph-14.2.8/src/msg/async/AsyncConnection.h ceph-14.2.8-ucx/src/msg/async/AsyncConnection.h
+--- ceph-14.2.8/src/msg/async/AsyncConnection.h	2020-03-03 01:49:20.000000000 +0800
++++ ceph-14.2.8-ucx/src/msg/async/AsyncConnection.h	2024-09-12 19:46:40.372873984 +0800
+@@ -56,6 +56,9 @@
+                std::function<void(char *, ssize_t)> callback);
+   ssize_t read_until(unsigned needed, char *p);
+   ssize_t read_bulk(char *buf, unsigned len);
++  ssize_t zero_copy_read(ceph::bufferlist &bl, size_t length,
++                         std::function<void(ceph::bufferlist &bl, ssize_t)> callback); 
++  ssize_t zero_copy_read_bulk(ceph::bufferlist &bl, size_t length);
+ 
+   ssize_t write(bufferlist &bl, std::function<void(ssize_t)> callback,
+                 bool more=false);
+@@ -211,7 +214,9 @@
+ 
+   std::optional<std::function<void(ssize_t)>> writeCallback;
+   std::function<void(char *, ssize_t)> readCallback;
++  std::function<void(ceph::bufferlist &, ssize_t)> zeroCopyReadCallback;
+   std::optional<unsigned> pendingReadLen;
++  ceph::bufferlist read_bl;
+   char *read_buffer;
+ 
+  public:
+diff -Nur ceph-14.2.8/src/msg/async/AsyncMessenger.cc ceph-14.2.8-ucx/src/msg/async/AsyncMessenger.cc
+--- ceph-14.2.8/src/msg/async/AsyncMessenger.cc	2020-03-03 01:49:20.000000000 +0800
++++ ceph-14.2.8-ucx/src/msg/async/AsyncMessenger.cc	2024-09-12 19:46:40.372873984 +0800
+@@ -284,6 +284,9 @@
+     transport_type = "rdma";
+   else if (type.find("dpdk") != std::string::npos)
+     transport_type = "dpdk";
++  else if (type.find("ucx") != std::string::npos)
++    transport_type = "ucx";
++
+ 
+   auto single = &cct->lookup_or_create_singleton_object<StackSingleton>(
+     "AsyncMessenger::NetworkStack::" + transport_type, true, cct);
+diff -Nur ceph-14.2.8/src/msg/async/dpdk/UserspaceEvent.cc ceph-14.2.8-ucx/src/msg/async/dpdk/UserspaceEvent.cc
+--- ceph-14.2.8/src/msg/async/dpdk/UserspaceEvent.cc	2020-03-03 01:49:20.000000000 +0800
++++ ceph-14.2.8-ucx/src/msg/async/dpdk/UserspaceEvent.cc	2024-09-12 19:46:40.372873984 +0800
+@@ -110,6 +110,8 @@
+ 
+     events[count] = fd;
+     Tub<UserspaceFDImpl> &impl = fds[fd];
++    if (impl->waiting_idx == 0)
++      continue;
+     ceph_assert(impl);
+     masks[count] = impl->listening_mask & impl->activating_mask;
+     ceph_assert(masks[count]);
+diff -Nur ceph-14.2.8/src/msg/async/dpdk/UserspaceEvent.h ceph-14.2.8-ucx/src/msg/async/dpdk/UserspaceEvent.h
+--- ceph-14.2.8/src/msg/async/dpdk/UserspaceEvent.h	2020-03-03 01:49:20.000000000 +0800
++++ ceph-14.2.8-ucx/src/msg/async/dpdk/UserspaceEvent.h	2024-09-12 19:46:40.372873984 +0800
+@@ -30,6 +30,8 @@
+ class CephContext;
+ 
+ class UserspaceEventManager {
++  std::list<uint32_t> unused_fds;
++protected:
+   struct UserspaceFDImpl {
+     uint32_t waiting_idx = 0;
+     int16_t read_errno = 0;
+@@ -37,13 +39,12 @@
+     int8_t listening_mask = 0;
+     int8_t activating_mask = 0;
+     uint32_t magic = 4921;
+-  };
+-  CephContext *cct;
+-  int max_fd = 0;
++  }; 
++   CephContext *cct;
++    int max_fd = 0;
+   uint32_t max_wait_idx = 0;
+   std::vector<Tub<UserspaceFDImpl> > fds;
+   std::vector<int> waiting_fds;
+-  std::list<uint32_t> unused_fds;
+ 
+  public:
+   explicit UserspaceEventManager(CephContext *c): cct(c) {
+diff -Nur ceph-14.2.8/src/msg/async/Event.cc ceph-14.2.8-ucx/src/msg/async/Event.cc
+--- ceph-14.2.8/src/msg/async/Event.cc	2020-03-03 01:49:20.000000000 +0800
++++ ceph-14.2.8-ucx/src/msg/async/Event.cc	2024-09-12 19:46:40.372873984 +0800
+@@ -22,6 +22,10 @@
+ #include "dpdk/EventDPDK.h"
+ #endif
+ 
++#ifdef HAVE_UCX
++#include "ucx/UCXEvent.h"
++#endif
++
+ #ifdef HAVE_EPOLL
+ #include "EventEpoll.h"
+ #else
+@@ -112,6 +116,13 @@
+ #ifdef HAVE_DPDK
+     driver = new DPDKDriver(cct);
+ #endif
++  } else if (type == "ucx") {
++#ifdef HAVE_UCX
++    ldout(cct, 20) << __func__ << " UCX driver is going to be used" << dendl;
++    driver = new UCXEventDriver(cct);
++#else
++    lderr(cct) << __func__ << " failed to create UCX event driver" << dendl;
++#endif
+   } else {
+ #ifdef HAVE_EPOLL
+   driver = new EpollDriver(cct);
+diff -Nur ceph-14.2.8/src/msg/async/PosixStack.cc ceph-14.2.8-ucx/src/msg/async/PosixStack.cc
+--- ceph-14.2.8/src/msg/async/PosixStack.cc	2020-03-03 01:49:20.000000000 +0800
++++ ceph-14.2.8-ucx/src/msg/async/PosixStack.cc	2024-09-12 19:46:40.372873984 +0800
+@@ -62,7 +62,7 @@
+     }
+   }
+ 
+-  ssize_t zero_copy_read(bufferptr&) override {
++  ssize_t zero_copy_read(ceph::buffer::list &bl, size_t len) override {
+     return -EOPNOTSUPP;
+   }
+ 
+diff -Nur ceph-14.2.8/src/msg/async/Protocol.h ceph-14.2.8-ucx/src/msg/async/Protocol.h
+--- ceph-14.2.8/src/msg/async/Protocol.h	2020-03-03 01:49:20.000000000 +0800
++++ ceph-14.2.8-ucx/src/msg/async/Protocol.h	2024-09-12 19:46:40.368873984 +0800
+@@ -46,8 +46,7 @@
+   }
+ };
+ 
+-using rx_buffer_t =
+-    std::unique_ptr<buffer::ptr_node, buffer::ptr_node::disposer>;
++using rx_buffer_t = ceph::buffer::list;
+ 
+ template <class C>
+ class CtRxNode : public Ct<C> {
+diff -Nur ceph-14.2.8/src/msg/async/ProtocolV1.cc ceph-14.2.8-ucx/src/msg/async/ProtocolV1.cc
+--- ceph-14.2.8/src/msg/async/ProtocolV1.cc	2020-03-03 01:49:20.000000000 +0800
++++ ceph-14.2.8-ucx/src/msg/async/ProtocolV1.cc	2024-09-12 19:46:40.368873984 +0800
+@@ -1384,7 +1384,7 @@
+       messenger->get_myaddrs().front().is_blank_ip()) {
+     sockaddr_storage ss;
+     socklen_t len = sizeof(ss);
+-    getsockname(connection->cs.fd(), (sockaddr *)&ss, &len);
++    connection->cs.getsockname(connection->cs.fd(), (sockaddr *)&ss, &len);
+     entity_addr_t a;
+     if (cct->_conf->ms_learn_addr_from_peer) {
+       ldout(cct, 1) << __func__ << " peer " << connection->target_addr
+diff -Nur ceph-14.2.8/src/msg/async/ProtocolV2.cc ceph-14.2.8-ucx/src/msg/async/ProtocolV2.cc
+--- ceph-14.2.8/src/msg/async/ProtocolV2.cc	2020-03-03 01:49:20.000000000 +0800
++++ ceph-14.2.8-ucx/src/msg/async/ProtocolV2.cc	2024-09-12 19:46:40.372873984 +0800
+@@ -57,7 +57,7 @@
+ 
+ #define WRITE(B, D, C) write(D, CONTINUATION(C), B)
+ 
+-#define READ(L, C) read(CONTINUATION(C), buffer::ptr_node::create(buffer::create(L)))
++#define READ(L, C) read(CONTINUATION(C), std::move(buffer::ptr(L)))
+ 
+ #define READ_RXBUF(B, C) read(CONTINUATION(C), B)
+ 
+@@ -94,6 +94,9 @@
+       bannerExchangeCallback(nullptr),
+       next_tag(static_cast<Tag>(0)),
+       keepalive(false) {
++        if (cct->_conf.get_val<bool>("ms_async_ucx_zerocopy"))
++          use_zero_copy = messenger->get_stack()->support_zero_copy_read();
++        else use_zero_copy = false;  
+ }
+ 
+ ProtocolV2::~ProtocolV2() {
+@@ -704,14 +707,16 @@
+ }
+ 
+ CtPtr ProtocolV2::read(CONTINUATION_RXBPTR_TYPE<ProtocolV2> &next,
+-                       rx_buffer_t &&buffer) {
+-  const auto len = buffer->length();
+-  const auto buf = buffer->c_str();
++                       buffer::ptr &&ptr) {
++  rx_buffer_t buffer;
++  buffer.append(ptr);
++  const auto len = buffer.length();
++  const auto buf = buffer.c_str();
+   next.node = std::move(buffer);
+   ssize_t r = connection->read(len, buf,
+     [&next, this](char *buffer, int r) {
+       if (unlikely(pre_auth.enabled) && r >= 0) {
+-        pre_auth.rxbuf.append(*next.node);
++        pre_auth.rxbuf.append(next.node);
+ 	ceph_assert(!cct->_conf->ms_die_on_bug ||
+ 		    pre_auth.rxbuf.length() < 1000000);
+       }
+@@ -721,7 +726,7 @@
+   if (r <= 0) {
+     // error or done synchronously
+     if (unlikely(pre_auth.enabled) && r >= 0) {
+-      pre_auth.rxbuf.append(*next.node);
++      pre_auth.rxbuf.append(next.node);
+       ceph_assert(!cct->_conf->ms_die_on_bug ||
+ 		  pre_auth.rxbuf.length() < 1000000);
+     }
+@@ -732,6 +737,36 @@
+   return nullptr;
+ }
+ 
++CtPtr ProtocolV2::zero_copy_read(CONTINUATION_RXBPTR_TYPE<ProtocolV2> &next, size_t length) { 
++  rx_buffer_t bl;                        
++  ssize_t r = connection->zero_copy_read(bl, length,
++    [&next, this](ceph::bufferlist &bl, int r) {
++      if (unlikely(pre_auth.enabled) && r >= 0) {
++        pre_auth.rxbuf.append(bl);
++	ceph_assert(!cct->_conf->ms_die_on_bug ||
++		    pre_auth.rxbuf.length() < 20000000);
++      }
++           
++      next.node = std::move(bl);
++      next.r = r;
++      run_continuation(next);
++    });
++  if (r <= 0) {
++    // error or done synchronously
++    if (unlikely(pre_auth.enabled) && r == 0) {
++      pre_auth.rxbuf.append(bl);
++      ceph_assert(!cct->_conf->ms_die_on_bug ||
++		  pre_auth.rxbuf.length() < 20000000);
++    }
++
++    next.node = std::move(bl);
++    next.r = r;
++    return &next;
++  }
++
++  return nullptr;
++} 
++
+ template <class F>
+ CtPtr ProtocolV2::write(const std::string &desc,
+                         CONTINUATION_TYPE<ProtocolV2> &next,
+@@ -792,7 +827,11 @@
+ 
+ CtPtr ProtocolV2::_wait_for_peer_banner() {
+   unsigned banner_len = strlen(CEPH_BANNER_V2_PREFIX) + sizeof(__le16);
+-  return READ(banner_len, _handle_peer_banner);
++  if (!use_zero_copy) {
++    return READ(banner_len, _handle_peer_banner); 
++  } else { 
++    return  zero_copy_read(CONTINUATION(_handle_peer_banner), banner_len);      
++  }
+ }
+ 
+ CtPtr ProtocolV2::_handle_peer_banner(rx_buffer_t &&buffer, int r) {
+@@ -806,8 +845,8 @@
+ 
+   unsigned banner_prefix_len = strlen(CEPH_BANNER_V2_PREFIX);
+ 
+-  if (memcmp(buffer->c_str(), CEPH_BANNER_V2_PREFIX, banner_prefix_len)) {
+-    if (memcmp(buffer->c_str(), CEPH_BANNER, strlen(CEPH_BANNER)) == 0) {
++  if (memcmp(buffer.c_str(), CEPH_BANNER_V2_PREFIX, banner_prefix_len)) {
++    if (memcmp(buffer.c_str(), CEPH_BANNER, strlen(CEPH_BANNER)) == 0) {
+       lderr(cct) << __func__ << " peer " << *connection->peer_addrs
+                  << " is using msgr V1 protocol" << dendl;
+       return _fault();
+@@ -818,9 +857,7 @@
+ 
+   uint16_t payload_len;
+   bufferlist bl;
+-  buffer->set_offset(banner_prefix_len);
+-  buffer->set_length(sizeof(__le16));
+-  bl.push_back(std::move(buffer));
++  buffer.splice(banner_prefix_len, sizeof(__le16), &bl);
+   auto ti = bl.cbegin();
+   try {
+     decode(payload_len, ti);
+@@ -830,8 +867,11 @@
+   }
+ 
+   INTERCEPT(state == BANNER_CONNECTING ? 5 : 6);
+-
++if (!use_zero_copy) {
+   return READ(payload_len, _handle_peer_banner_payload);
++} else {
++    return  zero_copy_read(CONTINUATION(_handle_peer_banner_payload), payload_len); 
++}
+ }
+ 
+ CtPtr ProtocolV2::_handle_peer_banner_payload(rx_buffer_t &&buffer, int r) {
+@@ -847,7 +887,7 @@
+   uint64_t peer_required_features;
+ 
+   bufferlist bl;
+-  bl.push_back(std::move(buffer));
++  bl.swap(buffer);
+   auto ti = bl.cbegin();
+   try {
+     decode(peer_supported_features, ti);
+@@ -926,7 +966,7 @@
+ 
+   sockaddr_storage ss;
+   socklen_t len = sizeof(ss);
+-  getsockname(connection->cs.fd(), (sockaddr *)&ss, &len);
++  connection->cs.getsockname(connection->cs.fd(), (sockaddr *)&ss, &len);
+   ldout(cct, 5) << __func__ << " getsockname says I am " << (sockaddr *)&ss
+ 		<< " when talking to " << connection->target_addr << dendl;
+ 
+@@ -1006,7 +1046,12 @@
+   }
+ 
+   ldout(cct, 20) << __func__ << dendl;
+-  return READ(FRAME_PREAMBLE_SIZE, handle_read_frame_preamble_main);
++ if (!use_zero_copy) {
++    return READ(FRAME_PREAMBLE_SIZE,
++              handle_read_frame_preamble_main);
++ } else {
++  return  zero_copy_read(CONTINUATION(handle_read_frame_preamble_main), FRAME_PREAMBLE_SIZE);
++ }
+ }
+ 
+ CtPtr ProtocolV2::handle_read_frame_preamble_main(rx_buffer_t &&buffer, int r) {
+@@ -1019,7 +1064,7 @@
+   }
+ 
+   ceph::bufferlist preamble;
+-  preamble.push_back(std::move(buffer));
++  preamble.append(std::move(buffer));
+ 
+   ldout(cct, 30) << __func__ << " preamble\n";
+   preamble.hexdump(*_dout);
+@@ -1143,10 +1188,12 @@
+ 
+   // description of current segment to read
+   const auto& cur_rx_desc = rx_segments_desc.at(rx_segments_data.size());
+-  rx_buffer_t rx_buffer;
++  uint32_t onwire_len = get_onwire_size(cur_rx_desc.length);
++  if (!use_zero_copy) {
++    ceph::unique_leakable_ptr<buffer::raw> raw_buf;
+   try {
+-    rx_buffer = buffer::ptr_node::create(buffer::create_aligned(
+-      get_onwire_size(cur_rx_desc.length), cur_rx_desc.alignment));
++    raw_buf = buffer::create_aligned(
++      onwire_len, cur_rx_desc.alignment);
+   } catch (std::bad_alloc&) {
+     // Catching because of potential issues with satisfying alignment.
+     ldout(cct, 20) << __func__ << " can't allocate aligned rx_buffer "
+@@ -1155,8 +1202,10 @@
+ 		   << dendl;
+     return _fault();
+   }
+-
+-  return READ_RXBUF(std::move(rx_buffer), handle_read_frame_segment);
++    return read(CONTINUATION(handle_read_frame_segment), std::move(bufferptr (std::move(raw_buf))));
++  } else {
++    return  zero_copy_read(CONTINUATION(handle_read_frame_segment), onwire_len);
++  }
+ }
+ 
+ CtPtr ProtocolV2::handle_read_frame_segment(rx_buffer_t &&rx_buffer, int r) {
+@@ -1168,8 +1217,14 @@
+     return _fault();
+   }
+ 
++  size_t seg_idx = rx_segments_data.size();
++  const auto& cur_rx_desc = rx_segments_desc.at(seg_idx);
++
++  if (!rx_buffer.is_aligned(cur_rx_desc.alignment)) {
++    // rx_buffer.rebuild_aligned_size_and_memory(cur_rx_desc.alignment, cur_rx_desc.alignment);
++  }
+   rx_segments_data.emplace_back();
+-  rx_segments_data.back().push_back(std::move(rx_buffer));
++  rx_segments_data.back().append(std::move(rx_buffer));
+ 
+   // decrypt incoming data
+   // FIXME: if (auth_meta->is_mode_secure()) {
+@@ -1192,7 +1247,11 @@
+ 
+   if (rx_segments_desc.size() == rx_segments_data.size()) {
+     // OK, all segments planned to read are read. Can go with epilogue.
+-    return READ(get_epilogue_size(), handle_read_frame_epilogue_main);
++    if (!use_zero_copy) {
++      return READ(get_epilogue_size(), handle_read_frame_epilogue_main);
++    } else {
++      return  zero_copy_read(CONTINUATION(handle_read_frame_epilogue_main), get_epilogue_size());
++    }
+   } else {
+     // TODO: for makeshift only. This will be more generic and throttled
+     return read_frame_segment();
+@@ -1305,7 +1364,7 @@
+     // decrypt epilogue and authenticate entire frame.
+     ceph::bufferlist epilogue_bl;
+     {
+-      epilogue_bl.push_back(std::move(buffer));
++      epilogue_bl.append(std::move(buffer));
+       try {
+         epilogue_bl =
+             session_stream_handlers.rx->authenticated_decrypt_update_final(
+@@ -1320,7 +1379,7 @@
+         reinterpret_cast<epilogue_plain_block_t&>(*epilogue_bl.c_str());
+     late_flags = epilogue.late_flags;
+   } else {
+-    auto& epilogue = reinterpret_cast<epilogue_plain_block_t&>(*buffer->c_str());
++    auto& epilogue = reinterpret_cast<epilogue_plain_block_t&>(*buffer.c_str());
+ 
+     for (std::uint8_t idx = 0; idx < rx_segments_data.size(); idx++) {
+       const __u32 expected_crc = epilogue.crc_values[idx];
+diff -Nur ceph-14.2.8/src/msg/async/ProtocolV2.h ceph-14.2.8-ucx/src/msg/async/ProtocolV2.h
+--- ceph-14.2.8/src/msg/async/ProtocolV2.h	2020-03-03 01:49:20.000000000 +0800
++++ ceph-14.2.8-ucx/src/msg/async/ProtocolV2.h	2024-09-12 19:46:40.372873984 +0800
+@@ -114,13 +114,22 @@
+ 
+   bool keepalive;
+   bool write_in_progress = false;
++  bool use_zero_copy;
++  // stat counters
++  enum {
++    l_msgr_protocalv2_first = 98000,
++    l_msgr_protocalv2_zerocopy,
++    l_msgr_protocalv2_copy,
++    l_msgr_protocalv2_last,
++  };
+ 
+   ostream &_conn_prefix(std::ostream *_dout);
+   void run_continuation(Ct<ProtocolV2> *pcontinuation);
+   void run_continuation(Ct<ProtocolV2> &continuation);
+ 
+   Ct<ProtocolV2> *read(CONTINUATION_RXBPTR_TYPE<ProtocolV2> &next,
+-                       rx_buffer_t&& buffer);
++                       buffer::ptr &&ptr);
++  Ct<ProtocolV2> *zero_copy_read(CONTINUATION_RXBPTR_TYPE<ProtocolV2> &next, size_t length);
+   template <class F>
+   Ct<ProtocolV2> *write(const std::string &desc,
+                         CONTINUATION_TYPE<ProtocolV2> &next,
+diff -Nur ceph-14.2.8/src/msg/async/rdma/RDMAConnectedSocketImpl.cc ceph-14.2.8-ucx/src/msg/async/rdma/RDMAConnectedSocketImpl.cc
+--- ceph-14.2.8/src/msg/async/rdma/RDMAConnectedSocketImpl.cc	2020-03-03 01:49:20.000000000 +0800
++++ ceph-14.2.8-ucx/src/msg/async/rdma/RDMAConnectedSocketImpl.cc	2024-09-12 19:46:40.372873984 +0800
+@@ -363,7 +363,7 @@
+   return read;
+ }
+ 
+-ssize_t RDMAConnectedSocketImpl::zero_copy_read(bufferptr &data)
++ssize_t RDMAConnectedSocketImpl::zero_copy_read(ceph::buffer::list &bl, size_t len)
+ {
+   if (error)
+     return -error;
+diff -Nur ceph-14.2.8/src/msg/async/rdma/RDMAStack.h ceph-14.2.8-ucx/src/msg/async/rdma/RDMAStack.h
+--- ceph-14.2.8/src/msg/async/rdma/RDMAStack.h	2020-03-03 01:49:20.000000000 +0800
++++ ceph-14.2.8-ucx/src/msg/async/rdma/RDMAStack.h	2024-09-12 19:46:40.372873984 +0800
+@@ -216,7 +216,7 @@
+   virtual int is_connected() override { return connected; }
+ 
+   virtual ssize_t read(char* buf, size_t len) override;
+-  virtual ssize_t zero_copy_read(bufferptr &data) override;
++  virtual ssize_t zero_copy_read(ceph::buffer::list &bl, size_t len) override;
+   virtual ssize_t send(bufferlist &bl, bool more) override;
+   virtual void shutdown() override;
+   virtual void close() override;
+diff -Nur ceph-14.2.8/src/msg/async/Stack.cc ceph-14.2.8-ucx/src/msg/async/Stack.cc
+--- ceph-14.2.8/src/msg/async/Stack.cc	2020-03-03 01:49:20.000000000 +0800
++++ ceph-14.2.8-ucx/src/msg/async/Stack.cc	2024-09-12 19:46:40.372873984 +0800
+@@ -23,6 +23,9 @@
+ #ifdef HAVE_RDMA
+ #include "rdma/RDMAStack.h"
+ #endif
++#ifdef HAVE_UCX
++#include "ucx/UCXStack.h"
++#endif
+ #ifdef HAVE_DPDK
+ #include "dpdk/DPDKStack.h"
+ #endif
+@@ -75,6 +78,10 @@
+   else if (t == "dpdk")
+     return std::make_shared<DPDKStack>(c, t);
+ #endif
++#ifdef HAVE_UCX
++  else if (t == "ucx")
++    return std::make_shared<UCXStack>(c, t);
++#endif
+ 
+   lderr(c) << __func__ << " ms_async_transport_type " << t <<
+     " is not supported! " << dendl;
+@@ -94,6 +101,10 @@
+   else if (type == "dpdk")
+     return new DPDKWorker(c, i);
+ #endif
++#ifdef HAVE_UCX
++  else if (type == "ucx")
++    return new UCXWorker(c, i);
++#endif
+ 
+   lderr(c) << __func__ << " ms_async_transport_type " << type <<
+     " is not supported! " << dendl;
+diff -Nur ceph-14.2.8/src/msg/async/Stack.h ceph-14.2.8-ucx/src/msg/async/Stack.h
+--- ceph-14.2.8/src/msg/async/Stack.h	2020-03-03 01:49:20.000000000 +0800
++++ ceph-14.2.8-ucx/src/msg/async/Stack.h	2024-09-12 19:46:40.372873984 +0800
+@@ -28,12 +28,16 @@
+   virtual ~ConnectedSocketImpl() {}
+   virtual int is_connected() = 0;
+   virtual ssize_t read(char*, size_t) = 0;
+-  virtual ssize_t zero_copy_read(bufferptr&) = 0;
++  virtual ssize_t zero_copy_read(ceph::buffer::list &bl, size_t len) = 0;
+   virtual ssize_t send(bufferlist &bl, bool more) = 0;
+   virtual void shutdown() = 0;
+   virtual void close() = 0;
+   virtual int fd() const = 0;
+   virtual int socket_fd() const = 0;
++  virtual int getsockname(int sockfd, struct sockaddr * addr, socklen_t * addrlen) {
++	  return ::getsockname(sockfd, addr, addrlen);
++  }
++
+ };
+ 
+ class ConnectedSocket;
+@@ -98,8 +102,8 @@
+   /// Gets the input stream.
+   ///
+   /// Gets an object returning data sent from the remote endpoint.
+-  ssize_t zero_copy_read(bufferptr &data) {
+-    return _csi->zero_copy_read(data);
++  ssize_t zero_copy_read(ceph::buffer::list &bl, size_t len) {
++    return _csi->zero_copy_read(bl, len);
+   }
+   /// Gets the output stream.
+   ///
+@@ -134,6 +138,11 @@
+     return _csi->socket_fd();
+   }
+ 
++  int getsockname(int sockfd, struct sockaddr *addr,
++                  socklen_t * addrlen) {
++      return _csi->getsockname(sockfd, addr, addrlen);
++  }
++
+   explicit operator bool() const {
+     return _csi.get();
+   }
+@@ -211,6 +220,12 @@
+   l_msgr_running_recv_time,
+   l_msgr_running_fast_dispatch_time,
+ 
++  l_msgr_running_read_frame_segment_count,
++  l_msgr_running_read_frame_time_count,
++  l_msgr_asyncconnection_read_total_time,
++  l_msgr_running_read_frame_segment_time,
++  l_msgr_running_read_frame_time,
++
+   l_msgr_last,
+ };
+ 
+@@ -251,6 +266,14 @@
+     plb.add_time(l_msgr_running_recv_time, "msgr_running_recv_time", "The total time of message receiving");
+     plb.add_time(l_msgr_running_fast_dispatch_time, "msgr_running_fast_dispatch_time", "The total time of fast dispatch");
+ 
++
++    plb.add_u64_counter(l_msgr_running_read_frame_segment_count, "msgr_active_connections", "Active connection number");
++    plb.add_u64_counter(l_msgr_running_read_frame_time_count, "msgr_created_connections", "Created connection number");
++
++    plb.add_time(l_msgr_asyncconnection_read_total_time, "msgr_asyncconnection_read_total_time", "The total time of thread running");
++    plb.add_time(l_msgr_running_read_frame_segment_time, "msgr_running_read_frame_segment_time", "The total time of message sending");
++    plb.add_time(l_msgr_running_read_frame_time, "msgr_running_read_frame_time", "The total time of message receiving");
++
+     perf_logger = plb.create_perf_counters();
+     cct->get_perfcounters_collection()->add(perf_logger);
+   }
+diff -Nur ceph-14.2.8/src/msg/async/ucx/UCXEvent.cc ceph-14.2.8-ucx/src/msg/async/ucx/UCXEvent.cc
+--- ceph-14.2.8/src/msg/async/ucx/UCXEvent.cc	1970-01-01 08:00:00.000000000 +0800
++++ ceph-14.2.8-ucx/src/msg/async/ucx/UCXEvent.cc	2024-09-12 19:46:40.372873984 +0800
+@@ -0,0 +1,152 @@
++// -*- mode:C++; tab-width:8; c-basic-offset:2; indent-tabs-mode:t -*-
++// vim: ts=8 sw=2 smarttab
++/*
++ * Ceph - scalable distributed file system
++ *
++ * Copyright (c) Huawei Technologies Co., Ltd. 2023-2023.
++ *
++ * Author: Chunsong Feng <fengchunsong@huawei.com>
++ *
++ * This is free software; you can redistribute it and/or
++ * modify it under the terms of the GNU Lesser General Public
++ * License version 2.1, as published by the Free Software
++ * Foundation.  See file COPYING.
++ *
++ */
++
++#include "UCXEvent.h"
++#include "UCXStack.h"
++#include "common/Cycles.h"
++
++#define dout_subsys ceph_subsys_ms
++
++#undef dout_prefix
++#define dout_prefix *_dout << "UCXEventDriver "
++
++int UCXEventManager::get_eventfd()
++{
++    std::lock_guard l(lock);
++    int fd = dup(base_fd);
++    if (fd > max_fd) {
++        max_fd = fd;
++        fds.resize(max_fd + 1);
++    }
++
++    Tub<UserspaceFDImpl> &impl = fds[fd];
++    ceph_assert(!impl);
++    impl.construct();
++    return fd;
++}
++
++void UCXEventManager::close(int fd)
++{
++    std::lock_guard l(lock);
++    if ((size_t)fd >= fds.size()) {
++        return;
++    }
++
++    Tub<UserspaceFDImpl> &impl = fds[fd];
++    if (!impl) {
++        return;
++    }
++
++    if (fd == max_fd) {
++        max_fd--;
++    }
++
++    if (impl->activating_mask) {
++        if (waiting_fds[max_wait_idx] == fd) {
++            ceph_assert(impl->waiting_idx == max_wait_idx);
++            --max_wait_idx;
++        }
++        waiting_fds[impl->waiting_idx] = -1;
++    }
++    impl.destroy();
++}
++
++int UCXEventDriver::init(EventCenter *c, int nevent)
++{
++    ldout(cct, 20) << __func__ << " num of event_masks: " << nevent << dendl;
++    Cycles::init();
++    return EpollDriver::init(c, nevent);
++}
++
++int UCXEventDriver::add_event(int fd, int cur_mask, int add_mask)
++{
++    ldout(cct, 20) << __func__ << " fd: " << fd << " read ? " << (EVENT_READABLE & add_mask) << dendl;
++
++    int r = manager.listen(fd, add_mask);
++    if (r == -ENOENT) {
++        return EpollDriver::add_event(fd, cur_mask, add_mask);
++    }
++
++    return r;
++}
++
++int UCXEventDriver::del_event(int fd, int cur_mask, int delmask)
++{
++    ldout(cct, 20) << __func__ << " del event fd=" << fd << " cur_mask=" << cur_mask << " delmask=" << delmask << dendl;
++    int r = 0;
++
++    if (delmask != EVENT_NONE) {
++        r = manager.unlisten(fd, delmask);
++        if (r == -ENOENT) {
++            return EpollDriver::del_event(fd, cur_mask, delmask);
++        }
++    }
++
++    return r;
++}
++
++int UCXEventDriver::resize_events(int newsize)
++{
++    return EpollDriver::resize_events(newsize);
++}
++
++int UCXEventDriver::event_wait(std::vector<FiredFileEvent> &fired_events, struct timeval *tvp)
++{
++    if (nullptr == ucp_worker) {
++        ldout(cct, 1) << __func__ << " ucp_worker null " << dendl;
++        return EpollDriver::event_wait(fired_events, tvp);
++    }
++
++    uint64_t start = Cycles::rdtsc();
++    tvp->tv_usec = cct->_conf->ms_async_rdma_polling_us;
++    static uint64_t count = cct->_conf->ms_async_ucx_event_count;
++    double seconds = tvp->tv_sec + tvp->tv_usec / 1000000.f;
++    uint64_t end = Cycles::from_seconds(seconds) + start;
++    while (ucp_worker_progress(ucp_worker)) {
++        uint64_t now = Cycles::rdtsc();
++        if (now > end) {
++            break;
++        }
++    }
++
++    int retval = manager.poll(ucx_events, ucx_masks, num_events, tvp);
++    if (retval > 0) {
++        fired_events.resize(retval);
++        for (int i = 0; i < retval; i++) {
++            fired_events[i].fd = ucx_events[i];
++            fired_events[i].mask = ucx_masks[i];
++        }
++        count = cct->_conf->ms_async_ucx_event_count;
++        return fired_events.size();
++    }
++
++    count = (count == 0) ? 0 : count - 1;
++    bool is_polling = cct->_conf->ms_async_ucx_event_polling;
++    if (false == is_polling && 0 == count) {
++        if (UCS_OK == ucp_worker_arm(ucp_worker)) {
++            retval = EpollDriver::event_wait(fired_events, tvp);
++            if (retval < 0) {
++                lderr(cct) << __func__ << " epoll wait failed with err: " << retval << dendl;
++                return retval;
++            }
++
++            ldout(cct, 20) << __func__ << " waking up with " << fired_events.size() << " events " << dendl;
++        }
++    }
++
++    return fired_events.size();
++}
++
+diff -Nur ceph-14.2.8/src/msg/async/ucx/UCXEvent.h ceph-14.2.8-ucx/src/msg/async/ucx/UCXEvent.h
+--- ceph-14.2.8/src/msg/async/ucx/UCXEvent.h	1970-01-01 08:00:00.000000000 +0800
++++ ceph-14.2.8-ucx/src/msg/async/ucx/UCXEvent.h	2024-09-12 19:46:40.372873984 +0800
+@@ -0,0 +1,80 @@
++// -*- mode:C++; tab-width:8; c-basic-offset:2; indent-tabs-mode:t -*-
++// vim: ts=8 sw=2 smarttab
++/*
++ * Ceph - scalable distributed file system
++ *
++ * Copyright (c) Huawei Technologies Co., Ltd. 2023-2023.
++ *
++ * Author: Chunsong Feng <fengchunsong@huawei.com>
++ *
++ * This is free software; you can redistribute it and/or
++ * modify it under the terms of the GNU Lesser General Public
++ * License version 2.1, as published by the Free Software
++ * Foundation.  See file COPYING.
++ *
++ */
++
++#ifndef CEPH_UCXEVENT_H
++#define CEPH_UCXEVENT_H
++
++#include <vector>
++
++#include "msg/async/Event.h"
++#include "msg/async/EventEpoll.h"
++#include "common/ceph_mutex.h"
++#include "msg/async/dpdk/UserspaceEvent.h"
++
++extern "C" {
++#include <ucp/api/ucp.h>
++};
++
++class UCXEventManager : public UserspaceEventManager {
++    CephContext *cct;
++    ceph::mutex lock = ceph::make_mutex("UCXEventManager::lock");
++    int base_fd;
++
++public:
++    explicit UCXEventManager(CephContext *c) : UserspaceEventManager(c), cct(c) {};
++    virtual ~UCXEventManager() {};
++
++    int get_eventfd();
++    void close(int fd);
++
++    void init(int fd)
++    {
++        base_fd = fd;
++        max_fd = fd;
++    }
++};
++
++class UCXEventDriver : public EpollDriver {
++    UCXEventManager manager;
++
++public:
++    explicit UCXEventDriver(CephContext *c) : EpollDriver(c), manager(c), cct(c) {};
++    virtual ~UCXEventDriver() {};
++
++    int init(EventCenter *c, int nevent) override;
++    int add_event(int fd, int cur_mask, int add_mask) override;
++    int del_event(int fd, int cur_mask, int del_mask) override;
++    int resize_events(int newsize) override;
++    int event_wait(vector<FiredFileEvent> &fired_events, struct timeval *tp) override;
++    void driver_init(ucp_worker_h ucp_w, int fd)
++    {
++        ucp_worker = ucp_w;
++        manager.init(fd);
++    }
++
++    UCXEventManager *get_manager() {
++        return &manager;
++    }
++
++private:
++    CephContext *cct;
++    ucp_worker_h ucp_worker;
++    const static int num_events = 512;
++    int ucx_events[num_events];
++    int ucx_masks[num_events];
++};
++
++#endif // CEPH_UCXEVENT_H
+diff -Nur ceph-14.2.8/src/msg/async/ucx/UCXStack.cc ceph-14.2.8-ucx/src/msg/async/ucx/UCXStack.cc
+--- ceph-14.2.8/src/msg/async/ucx/UCXStack.cc	1970-01-01 08:00:00.000000000 +0800
++++ ceph-14.2.8-ucx/src/msg/async/ucx/UCXStack.cc	2024-09-12 19:46:40.372873984 +0800
+@@ -0,0 +1,1060 @@
++// -*- mode:C++; tab-width:8; c-basic-offset:2; indent-tabs-mode:t -*-
++// vim: ts=8 sw=2 smarttab
++/*
++ * Ceph - scalable distributed file system
++ *
++ * Copyright (c) Huawei Technologies Co., Ltd. 2023-2023.
++ *
++ * Author: Chunsong Feng <fengchunsong@huawei.com>
++ *
++ * This is free software; you can redistribute it and/or
++ * modify it under the terms of the GNU Lesser General Public
++ * License version 2.1, as published by the Free Software
++ * Foundation.  See file COPYING.
++ *
++ */
++
++#include "UCXStack.h"
++#include "UCXEvent.h"
++#include "common/deleter.h"
++
++#define dout_subsys ceph_subsys_ms
++#undef dout_prefix
++#define dout_prefix *_dout << "UCXConnectedSocketImpl "
++
++UCXConnectedSocketImpl::UCXConnectedSocketImpl(UCXWorker *w, int fd) : cct(w->cct), worker(w), conn_fd(fd)
++{
++    UCXEventDriver *driver = dynamic_cast<UCXEventDriver *>(worker->center.get_driver());
++    manager = driver->get_manager();
++    ucp_worker = w->get_ucp_worker();
++    use_zero_copy = cct->_conf.get_val<bool>("ms_async_ucx_zerocopy");
++}
++
++void UCXConnectedSocketImpl::shutdown()
++{
++    ceph_assert(worker->center.in_thread());
++    ldout(cct, 20) << __func__ << " conn fd: " << conn_fd << " is shutting down..." << dendl;
++}
++
++void UCXConnectedSocketImpl::request_init(void *req)
++{
++    UCXReqDescr *desc = static_cast<UCXReqDescr *>(req);
++    desc->bl = new bufferlist;
++}
++
++void UCXConnectedSocketImpl::request_cleanup(void *req)
++{
++    UCXReqDescr *desc = static_cast<UCXReqDescr *>(req);
++
++    delete desc->bl;
++}
++
++void UCXConnectedSocketImpl::ucx_ep_close(bool close_event)
++{
++    int fd = conn_fd;
++    if (ucp_ep != nullptr) {
++        ceph_assert(nullptr != ucp_ep);
++        ldout(cct, 20) << __func__ << " fd: " << fd << " ep=" << (void *)ucp_ep << dendl;
++        for (auto req : send_reqs) {
++            req->conn = nullptr;
++            ucp_request_cancel(ucp_worker, req);
++        }
++        send_reqs.clear();
++        for (auto req : recv_reqs) {
++            req->conn = nullptr;
++            ucp_request_cancel(ucp_worker, req);
++        }
++        recv_reqs.clear();
++
++        ucs_status_ptr_t request = ucp_ep_close_nb(ucp_ep, UCP_EP_CLOSE_MODE_FORCE);
++        if (nullptr == request) {
++            ldout(cct, 10) << __func__ << " ucp ep fd: " << fd << " closed in place..." << dendl;
++        } else if (UCS_PTR_IS_PTR(request)) {
++            /*
++             * We don't care even the request is still in
++             * UCS_INPROGRESS state - it's UCX responsility now
++             */
++            ldout(cct, 10) << __func__ << " ucp ep fd: " << fd << " closed pending..." << dendl;
++            ucp_request_free(request);
++        } else if (UCS_PTR_STATUS(request) != UCS_OK) {
++            lderr(cct) << __func__ << " fd: " << fd << " ucp_ep_close_nb call failed: err " <<
++                ucs_status_string(UCS_PTR_STATUS(request)) << dendl;
++        }
++
++        worker->erase_connection(ucp_ep);
++        conn_release_recvs();
++        ucp_ep = nullptr;
++        conn_state = CLOSED;
++    }
++
++    ldout(cct, 10) << __func__ << " fd: " << fd << " exit..." << dendl;
++}
++
++void UCXConnectedSocketImpl::conn_release_recvs()
++{
++    size_t total = rx_bl.length();
++
++    /* Free all pending_fd receives */
++    rx_bl.clear();
++    if (total)
++        ldout(cct, 1) << __func__ << " fd: " << conn_fd << " total " << total << dendl;
++}
++
++void UCXConnectedSocketImpl::close()
++{
++    if (conn_fd > 0) {
++        ldout(cct, 10) << __func__ << " fd: " << conn_fd << " send " << sn_send << " recv " << sn_recv << dendl;
++        ucx_ep_close(false);
++        manager->close(conn_fd);
++        conn_fd = -1;
++    }
++}
++
++UCXConnectedSocketImpl::~UCXConnectedSocketImpl()
++{
++    UCXConnectedSocketImpl::close();
++    out_of_order_map.clear();
++}
++
++int UCXConnectedSocketImpl::submit(bufferlist &bl, MsgHeader *msg, const void *buffer, size_t count,
++    ucp_datatype_t type)
++{
++    ucp_dt_iov_t *iov_list = nullptr;
++    msg->seq = sn_send;
++    msg->hton();
++    ucp_request_param_t param;
++    param.op_attr_mask =
++        UCP_OP_ATTR_FIELD_CALLBACK | UCP_OP_ATTR_FIELD_DATATYPE | UCP_OP_ATTR_FIELD_USER_DATA | UCP_OP_ATTR_FIELD_FLAGS;
++    param.datatype = type;
++    param.cb.send = send_completion_cb;
++    param.flags = UCP_AM_SEND_FLAG_REPLY;
++    param.user_data = reinterpret_cast<void *>(msg);
++    UCXReqDescr *req =
++        static_cast<UCXReqDescr *>(ucp_am_send_nbx(ucp_ep, AM_ID, msg, sizeof(*msg), buffer, count, &param));
++
++    if ((type & UCP_DATATYPE_CLASS_MASK) == UCP_DATATYPE_IOV)
++        iov_list = (ucp_dt_iov_t *)buffer;
++    if (req == nullptr) {
++        /* in place completion */
++        ldout(cct, 20) << __func__ << " SENT IN PLACE " << dendl;
++        bl.splice(0, msg->data_len);
++        sn_send += msg->data_len;
++        if (iov_list) {
++            delete[] iov_list;
++        }
++        delete msg;
++        return 0;
++    }
++
++    if (UCS_PTR_IS_ERR(req)) {
++        if (iov_list) {
++            delete[] iov_list;
++        }
++        delete msg;
++        lderr(cct) << __func__ << " fd: " << conn_fd << " send failure: " << UCS_PTR_STATUS(req) << dendl;
++        return -EAGAIN;
++    }
++
++    req->conn = this;
++    bl.splice(0, msg->data_len, req->bl);
++    req->iov_list = iov_list;
++    req->sn = sn_send;
++    send_reqs.insert(req);
++    ldout(cct, 20) << __func__ << " send in progress req " << req << dendl;
++
++    sn_send += msg->data_len;
++    return 0;
++}
++
++ssize_t UCXConnectedSocketImpl::do_send(bufferlist &bl)
++{
++    unsigned iov_cnt = bl.get_num_buffers();
++
++    auto pb = std::cbegin(bl.buffers());
++    int rc;
++    size_t length = 0;
++    if (iov_cnt == 1) {
++        MsgHeader *msg = new MsgHeader;
++        length = pb->length();
++        msg->data_len = length;
++        if (pb->length() >= PAGE_SIZE_ALIGNMENT) {
++            msg->align = 0;
++        }
++        rc = submit(bl, msg, pb->c_str(), pb->length(), ucp_dt_make_contig(1));
++        if (rc < 0) {
++            return rc;
++        }
++        return length;
++    } else {
++        ucp_dt_iov_t *iov_list = new ucp_dt_iov_t[iov_cnt];
++        MsgHeader *msg = new MsgHeader;
++        int n;
++        size_t off = 0;
++        const char *pbuf = pb->raw_c_str();
++        int buf_count = 0;
++        for (n = 0; pb != bl.buffers().end(); ++pb) {
++            if (pb->length() == 0) {
++                ldout(cct, 10) << __func__ << " skip zero len " << dendl;
++                continue;
++            }
++
++            iov_list[n].buffer = (void *)(pb->c_str());
++            iov_list[n].length = pb->length();
++
++            if (pb->length() >= PAGE_SIZE_ALIGNMENT) {
++                msg->align = off;
++            }
++            off += pb->length();
++            n++;
++            if (pb->raw_c_str() == pbuf) {
++                buf_count++;
++                if (buf_count == 3) {
++                    buf_count = 0;
++                    break;
++                }
++            }
++        }
++        length = off;
++        msg->data_len = off;
++        rc = submit(bl, msg, iov_list, n, ucp_dt_make_iov());
++        if (rc < 0) {
++            return rc;
++        }
++    }
++
++    return length;
++}
++
++ssize_t UCXConnectedSocketImpl::send(bufferlist &bl, bool more)
++{
++    unsigned total_len = bl.length();
++
++    if (total_len == 0) {
++        ldout(cct, 1) << __func__ << " fd: " << conn_fd << " sending " << total_len << dendl;
++        return 0;
++    }
++
++    if (conn_state >= DISCONNECTED)
++        return -EIO;
++
++    if (nullptr == ucp_ep) {
++        ldout(cct, 20) << __func__ << " fd: " << conn_fd << " put " << total_len << " bytes to the pending" << dendl;
++        return -EIO;
++    }
++    
++    ssize_t rc = do_send(bl);
++    if (rc < 0) {
++        return rc;
++    }
++    if (!more) {
++        while (ucp_worker_progress(ucp_worker))
++            ;
++    }
++
++    return total_len - bl.length();
++}
++
++int UCXConnectedSocketImpl::getsockname(int sockfd, struct sockaddr *addr, socklen_t *addrlen)
++{
++    ucp_ep_attr_t attr;
++    attr.field_mask = UCP_EP_ATTR_FIELD_LOCAL_SOCKADDR;
++    ucs_status_t status = ucp_ep_query(ucp_ep, &attr);
++    if (status != UCS_OK) {
++        return -1;
++    }
++    if (*addrlen < sizeof(struct sockaddr)) {
++        memcpy(addr, (char *)(&attr.local_sockaddr), *addrlen);
++        *addrlen = sizeof(struct sockaddr);
++    } else {
++        memcpy(addr, (char *)(&attr.local_sockaddr), sizeof(struct sockaddr));
++    }
++
++    return 0;
++};
++
++void UCXConnectedSocketImpl::send_completion_cb(void *req, ucs_status_t status, void *userdata)
++{
++    UCXReqDescr *descr = static_cast<UCXReqDescr *>(req);
++    UCXConnectedSocketImpl *conn = descr->conn;
++    MsgHeader *msg = reinterpret_cast<MsgHeader *>(userdata);
++    if (conn) {
++        conn->send_reqs.erase(descr);
++        ldout(conn->cct, 20) << __func__ << " send complete sn_send " << descr->sn << " length " <<
++            descr->bl->length() << dendl;
++    }
++    descr->bl->clear();
++    if (descr->iov_list) {
++        delete[] descr->iov_list;
++    }
++    delete msg;
++
++    ucp_request_free(req);
++}
++
++void UCXConnectedSocketImpl::insert_recv_buffers(uint64_t sn, bufferlist &bl, size_t length)
++{
++    if (sn > sn_recv) {
++        ldout(cct, 20) << __func__ << " out of oder, expected " << sn_recv << " got " << sn << " length " <<
++            bl.length() << dendl;
++        insert_out_of_order(sn, bl);
++    } else if (sn_recv - sn + bl.length() <= length) {
++        sn_recv += bl.length();
++        rx_bl.append(std::move(bl));
++        merge_out_of_order();
++        manager->notify(conn_fd, EVENT_READABLE);
++    } else {
++        ldout(cct, 0) << __func__ << " out of oder error " << sn_recv << " got " << sn << " length " << bl.length() <<
++            " msg length " << length << dendl;
++    }
++}
++
++void UCXConnectedSocketImpl::am_recv_data_callback(void *req, ucs_status_t status, size_t length, void *user_data)
++{
++    UCXReqDescr *desc = reinterpret_cast<UCXReqDescr *>(req);
++    UCXWorker *myworker = reinterpret_cast<UCXWorker *>(user_data);
++    UCXConnectedSocketImpl *conn = desc->conn;
++
++    if (conn == nullptr) {
++        lderr(myworker->cct) << " callback after disconnect status " << status << dendl;
++        goto free_resource;
++    }
++
++    if (status != UCS_OK) {
++        lderr(myworker->cct) << " callback with error status " << ucs_status_string(status) << dendl;
++        goto remove_req;
++    }
++
++    ceph_assert(desc->bl->length() == length);
++    conn->insert_recv_buffers(desc->sn, *desc->bl, desc->bl->length());
++    ldout(myworker->cct, 20) << " am_recv_data_callback with length " << length << dendl;
++
++remove_req:
++    conn->recv_reqs.erase(desc);
++
++free_resource:
++    desc->bl->clear();
++    if (desc->iov_list) {
++        delete[] desc->iov_list;
++    }
++    ucp_request_free(req);
++}
++
++bufferlist UCXConnectedSocketImpl::create_bufferlist_with_hint(size_t length, MsgHeader &msg)
++{
++    bufferlist bl;
++    size_t len = length;
++    if (!use_zero_copy) {
++        bufferptr ptr(buffer::create(length));
++        bl.append(std::move(ptr));
++        return bl;
++    }
++    if (msg.align != 0xFFFFFFFF) {
++        len = msg.align;
++    }
++    if (len) {
++        bufferptr ptr(buffer::create(len));
++        bl.append(std::move(ptr));
++    }
++    len = length - len;
++    if (len) {
++        bufferptr ptr(buffer::create_aligned(len, PAGE_SIZE_ALIGNMENT));
++        bl.append(std::move(ptr));
++    }
++    return bl;
++}
++
++ucs_status_t UCXConnectedSocketImpl::process_recv_request(ucp_worker_h ucp_worker, void *data, size_t length,
++    MsgHeader &msg)
++{
++    bufferlist bl = create_bufferlist_with_hint(length, msg);
++
++    unsigned iov_cnt = bl.get_num_buffers();
++
++    ucp_request_param_t param;
++    param.op_attr_mask = UCP_OP_ATTR_FIELD_CALLBACK | UCP_OP_ATTR_FIELD_DATATYPE | UCP_OP_ATTR_FIELD_USER_DATA;
++    param.datatype = (iov_cnt == 1) ? ucp_dt_make_contig(1) : ucp_dt_make_iov();
++    param.cb.recv_am = am_recv_data_callback;
++    param.user_data = reinterpret_cast<void *>(worker);
++    ucp_dt_iov_t *iov_list;
++    UCXReqDescr *req;
++    auto pb = std::cbegin(bl.buffers());
++    if (iov_cnt == 1) {
++        iov_list = nullptr;
++
++        req = static_cast<UCXReqDescr *>(
++            ucp_am_recv_data_nbx(ucp_worker, data, (void *)(pb->c_str()), pb->length(), &param));
++    } else {
++        iov_list = new ucp_dt_iov_t[iov_cnt];
++        for (int n = 0; pb != bl.buffers().end(); ++pb, ++n) {
++            iov_list[n].buffer = (void *)(pb->c_str());
++            iov_list[n].length = pb->length();
++        }
++        req = static_cast<UCXReqDescr *>(ucp_am_recv_data_nbx(ucp_worker, data, iov_list, iov_cnt, &param));
++    }
++    if (req == nullptr) {
++        if (iov_list) {
++            delete[] iov_list;
++        }
++        insert_recv_buffers(msg.seq, bl, msg.data_len);
++        bl.clear();
++        lderr(worker->cct) << __func__ << " read inplace length " << length << " total " << sn_recv << dendl;
++        return UCS_OK;
++    } else if (UCS_PTR_IS_ERR(req)) {
++        if (iov_list) {
++            delete[] iov_list;
++        }
++        bl.clear();
++        lderr(worker->cct) << __func__ << " fd: " << conn_fd << " send failure: " << UCS_PTR_STATUS(req) << dendl;
++        return UCS_PTR_STATUS(req);
++    } else {
++        req->conn = this;
++        req->bl->swap(bl);
++        req->iov_list = iov_list;
++        req->sn = msg.seq;
++        recv_reqs.insert(req);
++        ldout(worker->cct, 20) << " recv sn: " << msg.seq << ", pending sn: " << sn_recv << dendl;
++    }
++    return UCS_INPROGRESS;
++}
++
++ssize_t UCXConnectedSocketImpl::read_buffers(char *rbuf, size_t bytes)
++{
++    int fd = conn_fd;
++    size_t read_size = 0;
++    size_t left;
++    size_t len;
++
++    auto pb = std::cbegin(rx_bl.buffers());
++    while (read_size < bytes) {
++        left = pb->length();
++        len = bytes - read_size;
++        ldout(cct, 20) << __func__ << " fd: " << fd << " read to " << (void *)rbuf << " wanted " << len << " left " <<
++            left << " pb->>offset= " << pb->offset() << " pb->>length= " << pb->length() << dendl;
++
++        len = len > left ? left : len;
++        memcpy(rbuf + read_size, pb->c_str(), len);
++        read_size += len;
++        pb++;
++    }
++    return read_size;
++}
++
++ssize_t UCXConnectedSocketImpl::zero_copy_read(ceph::bufferlist &bl, size_t length)
++{
++    ceph_assert(worker->center.in_thread());
++    if (rx_bl.length() == 0) {
++	while (ucp_worker_progress(ucp_worker));
++    }
++    size_t bytes = length - bl.length();
++    size_t len = bytes > rx_bl.length() ? rx_bl.length() : bytes;
++    if (len == 0) {
++        if (conn_state >= DISCONNECTED) {
++            return 0; // peer close
++        }
++        return -EAGAIN;
++    }
++    ldout(cct, 20) << __func__ << " fd: " << conn_fd << " rx_bl.length() " << rx_bl.length() << " wanted " << bytes <<
++        " len = " << len << dendl;
++    ceph::bufferlist rbl;
++    rx_bl.splice(0, len, &rbl);
++    bl.append(std::move(rbl));
++    if (rx_bl.length()) {
++        manager->notify(conn_fd, EVENT_READABLE);
++    }
++
++    return len;
++}
++
++ssize_t UCXConnectedSocketImpl::read(char *rbuf, size_t bytes)
++{
++    ceph_assert(worker->center.in_thread());
++    if (rx_bl.length() == 0) {
++	while (ucp_worker_progress(ucp_worker));
++    }
++    size_t len = bytes > rx_bl.length() ? rx_bl.length() : bytes;
++    if (len == 0) {
++        if (conn_state >= DISCONNECTED) {
++            return 0; // peer close
++        }
++        return -EAGAIN;
++    }
++
++    read_buffers(rbuf, len);
++    rx_bl.splice(0, len);
++
++    if (rx_bl.length()) {
++        manager->notify(conn_fd, EVENT_READABLE);
++    }
++
++    return len;
++}
++
++bool UCXConnectedSocketImpl::merge_out_of_order()
++{
++    bool merged = false;
++    if (out_of_order_map.empty()) {
++        return merged;
++    }
++
++    for (auto it = out_of_order_map.begin(); it != out_of_order_map.end();) {
++        auto &bl = it->second;
++        auto seg_beg = it->first;
++        auto seg_len = bl.length();
++        auto seg_end = seg_beg + seg_len;
++
++        if (seg_beg <= sn_recv && seg_end > sn_recv) {
++            // This segment has been received out of order and its previous
++            // segment has been received now
++            auto trim = sn_recv - seg_beg;
++            if (trim) {
++                bl.splice(0, trim);
++                seg_len -= trim;
++            }
++            sn_recv += seg_len;
++            rx_bl.append(std::move(bl));
++            ldout(cct, 20) << __func__ << " merge out of oder sn " << seg_beg << " length" << seg_len <<
++                " current sn: " << sn_recv << " trim " << trim << dendl;
++            // Since c++11, erase() always returns the value of the following element
++            it = out_of_order_map.erase(it);
++            merged = true;
++        } else if (sn_recv >= seg_end) {
++            ldout(cct, 20) << __func__ << " drop merge out of oder seg_beg " << seg_beg << " seg_len: " << seg_len <<
++                " current sn: " << sn_recv << dendl;
++
++            // This segment has been receive already, drop it
++            it = out_of_order_map.erase(it);
++        } else {
++            // seg_beg > sn_recv, can not merge. Note, seg_beg can grow only,
++            // so we can stop looking here.
++            it++;
++            break;
++        }
++    }
++    return merged;
++}
++
++#undef dout_prefix
++#define dout_prefix *_dout << "UCXServerSocketImpl "
++
++UCXServerSocketImpl::UCXServerSocketImpl(UCXWorker *w, int server_socket, entity_addr_t &a, unsigned addr_slot)
++    : ServerSocketImpl(a.get_type(), addr_slot), worker(w), server_fd(server_socket)
++{}
++
++UCXServerSocketImpl::~UCXServerSocketImpl()
++{
++    if (ucp_listener) {
++        ucp_listener_destroy(ucp_listener);
++        ucp_listener = nullptr;
++    }
++    worker->erase_listen_fd(server_fd);
++}
++
++int UCXServerSocketImpl::accept(ConnectedSocket *sock, const SocketOptions &opt, entity_addr_t *peer_addr, Worker *w)
++{
++    ceph_assert(worker->center.in_thread());
++    ucp_conn_request_h conn_req = pop_conn_request();
++    if (conn_req == nullptr) {
++        return -EAGAIN;
++    }
++    ldout(worker->cct, 20) << __func__ << " server_fd: " << server_fd << " conn_req: " << (void *)conn_req << dendl;
++
++    ucp_conn_request_attr_t attr;
++    attr.field_mask = UCP_CONN_REQUEST_ATTR_FIELD_CLIENT_ADDR;
++    ucs_status_t status = ucp_conn_request_query(conn_req, &attr);
++    if (status != UCS_OK) {
++        if (status != UCS_ERR_UNSUPPORTED) {
++            ucp_listener_reject(ucp_listener, conn_req);
++        }
++        return -EIO;
++    };
++    peer_addr->set_sockaddr((sockaddr *)(&attr.client_address));
++    peer_addr->set_type(addr_type);
++    if (!conn_request_queue.empty()) {
++        worker->get_manager()->notify(server_fd, EVENT_READABLE);
++    }
++
++    UCXWorker *dest_worker = static_cast<UCXWorker *>(w);
++    int fd = dest_worker->get_manager()->get_eventfd();
++    UCXConnectedSocketImpl *p = new UCXConnectedSocketImpl(dest_worker, fd);
++    p->set_sockaddr((sockaddr *)(&attr.client_address));
++    if (w->center.in_thread()) {
++        dest_worker->accept_connection(p, conn_req);
++    } else {
++        w->center.submit_to(
++            w->center.get_id(), [dest_worker, p, conn_req]() { dest_worker->accept_connection(p, conn_req); }, true);
++    }
++
++    std::unique_ptr<UCXConnectedSocketImpl> csi(p);
++    *sock = ConnectedSocket(std::move(csi));
++
++    return 0;
++}
++
++void UCXServerSocketImpl::abort_accept()
++{
++    ceph_assert(worker->center.in_thread());
++    if (server_fd == -1)
++        return;
++    if (ucp_listener) {
++        for (auto it = conn_request_queue.cbegin(); it != conn_request_queue.cend(); ++it) {
++            ucp_listener_reject(ucp_listener, *it);
++        }
++        conn_request_queue.clear();
++
++        worker->get_manager()->close(server_fd);
++
++        // ucp_listener_destroy(ucp_listener);
++
++        // ucp_listener = nullptr;
++    }
++    server_fd = -1;
++}
++
++#undef dout_prefix
++#define dout_prefix *_dout << "UCXWorker "
++
++class C_handle_event : public EventCallback {
++    UCXWorker *worker;
++
++public:
++    explicit C_handle_event(UCXWorker *w) : worker(w) {}
++    void do_request(uint64_t fd_or_id) override
++    {
++        worker->handle_poll(fd_or_id);
++    }
++};
++
++void UCXWorker::handle_poll(uint64_t fd_or_id) {}
++
++UCXWorker::UCXWorker(CephContext *c, unsigned i) : Worker(c, i)
++{
++    event_handler = new C_handle_event(this);
++}
++
++UCXWorker::~UCXWorker()
++{
++    for (auto it : conn_map) {
++        UCXConnectedSocketImpl *conn = it.second;
++        conn->close();
++    }
++    conn_map.clear();
++}
++
++void UCXWorker::ep_error_cb_client(void *arg, ucp_ep_h ep, ucs_status_t status)
++{
++    UCXWorker *worker = reinterpret_cast<UCXWorker *>(arg);
++    UCXConnectedSocketImpl *conn = worker->find_connection(ep);
++    if (!conn) {
++        ldout(worker->cct, 0) << "Can not find ep in conn_map" << dendl;
++        return;
++    }
++    CephContext *cct = conn->get_cct();
++    if (conn->is_connected()) {
++        lderr(cct) << "ep_error_cb_client " << status << ucs_status_string(status) << " fd " << conn->fd() << " ep " << ep <<
++            " connected " << dendl;
++        ceph_assert(UCS_ERR_IO_ERROR != status);
++        conn->set_connect_stat(UCXConnectedSocketImpl::DISCONNECTED);
++        worker->manager->notify(conn->fd(), EVENT_READABLE);
++    } else {
++        lderr(cct) << "ep_error_cb_client " << ucs_status_string(status) << " fd " << conn->fd() << " ep " << ep <<
++            " unconnected" << dendl;
++        ucs_status_ptr_t request = ucp_ep_close_nb(ep, UCP_EP_CLOSE_MODE_FORCE);
++        if (nullptr == request) {
++            ldout(cct, 10) << __func__ << " ucp ep fd: " << conn->fd() << " closed in place..." << dendl;
++        } else if (UCS_PTR_IS_PTR(request)) {
++            /*
++             * We don't care even the request is still in
++             * UCS_INPROGRESS state - it's UCX responsility now
++             */
++            ucp_request_free(request);
++        } else if (UCS_PTR_STATUS(request) != UCS_OK) {
++            lderr(cct) << __func__ << " ep: " << ep << " ucp_ep_close_nb call failed: err " <<
++                ucs_status_string(UCS_PTR_STATUS(request)) << dendl;
++        }
++        ceph_assert(conn->send_reqs.size() == 0);
++        ceph_assert(conn->recv_reqs.size() == 0);
++    }
++}
++
++void UCXWorker::ep_error_cb(void *arg, ucp_ep_h ep, ucs_status_t status)
++{
++    UCXWorker *worker = reinterpret_cast<UCXWorker *>(arg);
++    UCXConnectedSocketImpl *conn = worker->find_connection(ep);
++    if (!conn) {
++        ldout(worker->cct, 0) << "Can not find ep in conn_map" << dendl;
++        return;
++    }
++    CephContext *cct = conn->get_cct();
++    if (conn->is_connected()) {
++        lderr(cct) << "ep_error_cb " << status << ucs_status_string(status) << " fd " << conn->fd() << " ep " << ep <<
++            " connected " << dendl;
++        ceph_assert(UCS_ERR_IO_ERROR != status);
++        conn->set_connect_stat(UCXConnectedSocketImpl::DISCONNECTED);
++        worker->manager->notify(conn->fd(), EVENT_READABLE);
++    } else {
++        lderr(cct) << "ep_error_cb " << ucs_status_string(status) << " fd " << conn->fd() << " ep " << ep <<
++            " unconnected" << dendl;
++        ucs_status_ptr_t request = ucp_ep_close_nb(ep, UCP_EP_CLOSE_MODE_FORCE);
++        if (nullptr == request) {
++            ldout(cct, 10) << __func__ << " ucp ep fd: " << conn->fd() << " closed in place..." << dendl;
++        } else if (UCS_PTR_IS_PTR(request)) {
++            /*
++             * We don't care even the request is still in
++             * UCS_INPROGRESS state - it's UCX responsility now
++             */
++            ucp_request_free(request);
++        } else if (UCS_PTR_STATUS(request) != UCS_OK) {
++            lderr(cct) << __func__ << " ep: " << ep << " ucp_ep_close_nb call failed: err " <<
++                ucs_status_string(UCS_PTR_STATUS(request)) << dendl;
++        }
++        ceph_assert(conn->send_reqs.size() == 0);
++        ceph_assert(conn->recv_reqs.size() == 0);
++    }
++}
++
++void UCXWorker::accept_connection(UCXConnectedSocketImpl *conn, ucp_conn_request_h conn_req)
++{
++    ceph_assert(center.in_thread());
++    int fd = conn->fd();
++    ucp_ep_h ucp_ep;
++    ucp_ep_params_t ep_params;
++
++    ceph_assert(fd > 0);
++
++    ldout(cct, 20) << __func__ << " fd: " << fd << " ep addr: " << conn_req << dendl;
++
++    ep_params.conn_request = conn_req;
++
++    ep_params.field_mask = UCP_EP_PARAM_FIELD_ERR_HANDLER | UCP_EP_PARAM_FIELD_CONN_REQUEST;
++
++    // ep_params.err_mode = UCP_ERR_HANDLING_MODE_PEER;| UCP_EP_PARAM_FIELD_ERR_HANDLING_MODE
++    ep_params.err_handler.cb = ep_error_cb;
++    ep_params.err_handler.arg = reinterpret_cast<void *>(this);
++
++    ucs_status_t status = ucp_ep_create(ucp_worker, &ep_params, &ucp_ep);
++    if (status == UCS_OK) {
++        ldout(cct, 1) << __func__ << " fd: " << fd << " UCP ep: " << (void *)ucp_ep << " successfully created" <<
++            dendl;
++        conn->ucp_ep = ucp_ep;
++        conn->set_connect_stat(UCXConnectedSocketImpl::CONNECTED);
++        conn_map[ucp_ep] = conn;
++        manager->notify(fd, EVENT_READABLE | EVENT_WRITABLE);
++    } else {
++        lderr(cct) << __func__ << " failed to create UCP endpoint fd: " << fd << " " << ucs_status_string(status) <<
++            dendl;
++        conn->set_connect_stat(UCXConnectedSocketImpl::DISCONNECTED);
++        manager->notify(fd, EVENT_READABLE);
++    }
++}
++
++ucs_status_t UCXWorker::am_recv_callback(void *arg, const void *header, size_t header_length, void *data, size_t length,
++    const ucp_am_recv_param_t *param)
++{
++    UCXWorker *worker = reinterpret_cast<UCXWorker *>(arg);
++    ceph_assert(worker->center.in_thread());
++    if (!(param->recv_attr & UCP_AM_RECV_ATTR_FIELD_REPLY_EP)) {
++        ldout(worker->cct, 0) << "UCP_AM_RECV_ATTR_FIELD_REPLY_EP not set" << dendl;
++        return UCS_OK;
++    }
++
++    UCXConnectedSocketImpl *conn = worker->find_connection(param->reply_ep);
++    if (!conn) {
++        ldout(worker->cct, 0) << "Can not find ep in conn_map" << dendl;
++        return UCS_OK;
++    }
++    if (!(param->recv_attr & (UCP_AM_RECV_ATTR_FLAG_DATA | UCP_AM_RECV_ATTR_FLAG_RNDV))) {
++        ldout(worker->cct, 0) <<
++            "Neither UCP_AM_RECV_ATTR_FIELD_DATA nor UCP_AM_RECV_ATTR_FLAG_RNDV is set, just wakeup fd " <<
++            conn->fd() << dendl;
++        return UCS_OK;
++    }
++
++    if (!conn->is_connected()) {
++        ldout(worker->cct, 0) << "Received am from after connection closed " << conn->get_connect_stat() << " fd " <<
++            conn->fd() << dendl;
++        return UCS_OK;
++    }
++    MsgHeader msg = *reinterpret_cast<const MsgHeader *>(header);
++    msg.ntoh();
++    ldout(worker->cct, 20) << "got io (AM) message "
++                           << "ver " << msg.ver << ", "
++                           << "sn " << msg.seq << ", "
++                           << "data len " << msg.data_len << ", "
++                           << " length " << length << dendl;
++
++    // ceph_assert(msg.data_len == length);
++    if (param->recv_attr & UCP_AM_RECV_ATTR_FLAG_RNDV) {
++        return conn->process_recv_request(worker->ucp_worker, data, length, msg);
++    }
++
++    if (param->recv_attr & UCP_AM_RECV_ATTR_FLAG_DATA) {
++        bufferptr bptr(buffer::claim_buffer(length, (char *)data,
++            make_deleter([worker, conn, data, length] { ucp_am_data_release(worker->ucp_worker, data); })));
++        bufferlist bl;
++        bl.append(std::move(bptr));
++        // bufferlist bl = conn->create_bufferlist_with_hint(length, msg, true);
++
++        // bl.append((char *)data, length);
++        conn->insert_recv_buffers(msg.seq, bl, msg.data_len);
++        ldout(worker->cct, 20) << " recv sn: " << msg.seq << ", current sn: " << conn->sn_recv << dendl;
++        return UCS_INPROGRESS;
++    }
++    return UCS_OK;
++}
++
++void UCXWorker::accept_cb(ucp_conn_request_h conn_req, void *arg)
++{
++    UCXServerSocketImpl *server_socket = reinterpret_cast<UCXServerSocketImpl *>(arg);
++    int server_fd = server_socket->fd();
++    UCXWorker *worker = server_socket->get_worker();
++    UCXServerSocketImpl *listern = worker->find_listener(server_fd);
++
++    ceph_assert(listern == server_socket);
++    server_socket->add_conn_request(conn_req);
++    worker->manager->notify(server_fd, EVENT_READABLE);
++
++    ldout(worker->cct, 20) << __func__ << " server_fd: " << server_fd << " UCP conn_req: " << (void *)conn_req << dendl;
++}
++
++int UCXWorker::listen(entity_addr_t &sa, unsigned addr_slot, const SocketOptions &opt, ServerSocket *sock)
++{
++    int server_fd;
++    ucp_listener_params_t params;
++    ceph_assert(center.in_thread());
++    server_fd = manager->get_eventfd();
++    UCXServerSocketImpl *p = new UCXServerSocketImpl(this, server_fd, sa, addr_slot);
++
++    params.field_mask = UCP_LISTENER_PARAM_FIELD_SOCK_ADDR | UCP_LISTENER_PARAM_FIELD_CONN_HANDLER;
++
++    params.sockaddr.addr = sa.get_sockaddr();
++    params.sockaddr.addrlen = sizeof(struct sockaddr);
++
++    params.conn_handler.cb = accept_cb;
++    params.conn_handler.arg = reinterpret_cast<void *>(p);
++
++    ucp_listener_h ucp_listener;
++
++    /* Create a listener on the server side to listen on the given address. */
++    ucs_status_t status = ucp_listener_create(ucp_worker, &params, &ucp_listener);
++    if (UCS_OK != status) {
++        delete p;
++        manager->close(server_fd);
++        lderr(cct) << __func__ << " Failed to create UCP listener with status: " << ucs_status_string(status) << dendl;
++        return -EBUSY;
++    }
++
++    ucp_listener_attr_t listen_attr;
++    listen_attr.field_mask = UCP_LISTENER_ATTR_FIELD_SOCKADDR;
++
++    status = ucp_listener_query(ucp_listener, &listen_attr);
++    if (status != UCS_OK) {
++        delete p;
++        manager->close(server_fd);
++        lderr(cct) << __func__ << "<Failed to query UCP listener> to addr: " << sa.get_sockaddr() << " status: " <<
++            ucs_status_string(status) << dendl;
++        ucp_listener_destroy(ucp_listener);
++        return -EIO;
++    }
++
++    ldout(cct, 0) << __func__ << " Created listner to addr: " << sa.get_sockaddr() << " server_fd: " << server_fd <<
++        dendl;
++
++    p->set_ucp_listener(ucp_listener);
++    listen_map[server_fd] = p;
++    *sock = ServerSocket(std::unique_ptr<ServerSocketImpl>(p));
++    return 0;
++}
++
++int UCXWorker::connect(const entity_addr_t &peer_addr, const SocketOptions &opts, ConnectedSocket *sock)
++{
++    ceph_assert(center.in_thread());
++    int fd = manager->get_eventfd();
++
++    ucp_ep_params_t ep_params;
++    ep_params.flags = UCP_EP_PARAMS_FLAGS_CLIENT_SERVER;
++    ep_params.field_mask = UCP_EP_PARAM_FIELD_FLAGS | UCP_EP_PARAM_FIELD_SOCK_ADDR | UCP_EP_PARAM_FIELD_ERR_HANDLER |
++        UCP_EP_PARAM_FIELD_ERR_HANDLING_MODE;
++    ep_params.err_mode = UCP_ERR_HANDLING_MODE_PEER;
++    ep_params.err_handler.cb = ep_error_cb_client;
++    ep_params.err_handler.arg = reinterpret_cast<void *>(this);
++
++    ep_params.sockaddr.addr = peer_addr.get_sockaddr();
++    ep_params.sockaddr.addrlen = sizeof(struct sockaddr);
++    entity_addr_t addr = opts.connect_bind_addr;
++    if (cct->_conf->ms_bind_before_connect && (!addr.is_blank_ip())) {
++        addr.set_port(0);
++        ep_params.field_mask |= UCP_EP_PARAM_FIELD_LOCAL_SOCK_ADDR;
++        ep_params.local_sockaddr.addr = addr.get_sockaddr();
++        ep_params.local_sockaddr.addrlen = addr.get_sockaddr_len();
++    }
++    ucp_ep_h ucp_ep;
++    ucs_status_t status = ucp_ep_create(ucp_worker, &ep_params, &ucp_ep);
++    if (UCS_OK != status) {
++        manager->close(fd);
++        lderr(cct) << __func__ << " creating UCP ep to addr failed addr: " << peer_addr.get_sockaddr() << " status: " <<
++            ucs_status_string(status) << dendl;
++        return -EIO;
++    }
++    UCXConnectedSocketImpl *conn = new UCXConnectedSocketImpl(this, fd);
++    conn->ucp_ep = ucp_ep;
++    conn->set_connect_stat(UCXConnectedSocketImpl::CONNECTED);
++    conn_map[ucp_ep] = conn;
++    ldout(cct, 0) << __func__ << " fd: " << conn->fd() << " UCP ep: " << (void *)ucp_ep << " to addr: " <<
++        peer_addr.get_sockaddr() << " successfully created" << dendl;
++
++    std::unique_ptr<UCXConnectedSocketImpl> csi(conn);
++    *sock = ConnectedSocket(std::move(csi));
++
++    return 0;
++}
++
++void UCXWorker::set_recv_handler(void)
++{
++    ucp_am_handler_param_t param;
++    param.field_mask = UCP_AM_HANDLER_PARAM_FIELD_ID | UCP_AM_HANDLER_PARAM_FIELD_CB | UCP_AM_HANDLER_PARAM_FIELD_ARG |
++        UCP_AM_HANDLER_PARAM_FIELD_FLAGS;
++    param.id = UCXConnectedSocketImpl::AM_ID;
++    param.cb = UCXWorker::am_recv_callback;
++    param.arg = this;
++    param.flags = UCP_AM_FLAG_PERSISTENT_DATA;
++    ceph_assert(UCS_OK == ucp_worker_set_am_recv_handler(ucp_worker, &param));
++}
++
++void UCXWorker::initialize()
++{
++    ucs_status_t status;
++    ucp_worker_params_t params;
++    params.thread_mode = UCS_THREAD_MODE_MULTI;
++    params.field_mask = UCP_WORKER_PARAM_FIELD_THREAD_MODE;
++    UCXEventDriver *driver = dynamic_cast<UCXEventDriver *>(center.get_driver());
++    manager = driver->get_manager();
++    status = ucp_worker_create(ucp_context, &params, &ucp_worker);
++    if (UCS_OK != status) {
++        lderr(cct) << __func__ << " failed to create UCP worker " << dendl;
++        ceph_abort();
++    }
++
++    status = ucp_worker_get_efd(ucp_worker, &ucp_fd);
++    if (UCS_OK != status) {
++        lderr(cct) << __func__ << " failed to obtain UCP worker event fd " << dendl;
++        ceph_abort();
++    }
++
++    driver->driver_init(ucp_worker, ucp_fd);
++
++    set_recv_handler();
++    center.create_file_event(ucp_fd, EVENT_READABLE, event_handler);
++}
++
++void UCXWorker::destroy()
++{
++    if (ucp_fd > 0) {
++        ldout(cct, 20) << __func__ << dendl;
++
++        ceph_assert(nullptr != ucp_worker);
++
++        center.delete_file_event(ucp_fd, EVENT_READABLE);
++        delete event_handler;
++        event_handler = nullptr;
++        ucp_worker_destroy(ucp_worker);
++        ucp_worker = nullptr;
++        ucp_fd = -1;
++    }
++}
++
++#undef dout_prefix
++#define dout_prefix *_dout << "UCXStack "
++
++void UCXStack::ucx_contex_create()
++{
++    ucp_params_t params;
++    ucs_status_t status;
++
++    ucp_config_t *ucp_config;
++
++    if (nullptr != ucp_context) {
++        return;
++    }
++
++    ldout(cct, 10) << __func__ << " UCX contex is going to be created..." << dendl;
++
++    int rc = setenv("UCX_NET_DEVICES", cct->_conf->ms_async_ucx_device.c_str(), 1);
++    if (rc) {
++        lderr(cct) << __func__ << " failed to export UCX_CEPH_NET_DEVICES. Application aborts." << dendl;
++        ceph_abort();
++    }
++
++    rc = setenv("UCX_TLS", cct->_conf->ms_async_ucx_tls.c_str(), 1);
++    if (rc) {
++        lderr(cct) << __func__ << " failed to export UCX_CEPH_TLS. Application aborts." << dendl;
++        ceph_abort();
++    }
++
++    std::string addr = cct->_conf.get_val<std::string>("rdma_cm_source_addr");
++    if (!addr.empty()) {
++        rc = setenv("UCX_RDMA_CM_SOURCE_ADDRESS", addr.c_str(), 1);
++        if (rc) {
++            lderr(cct) << __func__ << " failed to export UCX_RDMA_CM_SOURCE_ADDRESS. Application aborts." << dendl;
++            ceph_abort();
++        }
++        lderr(cct) << __func__ << " export UCX_RDMA_CM_SOURCE_ADDRESS = " << addr << dendl;
++    }
++
++    status = ucp_config_read("", nullptr, &ucp_config);
++    if (UCS_OK != status) {
++        lderr(cct) << __func__ << "failed to read UCP config" << dendl;
++        ceph_abort();
++    }
++
++    memset(&params, 0, sizeof(params));
++    params.field_mask = UCP_PARAM_FIELD_FEATURES | UCP_PARAM_FIELD_REQUEST_SIZE | UCP_PARAM_FIELD_REQUEST_INIT |
++        UCP_PARAM_FIELD_REQUEST_CLEANUP | UCP_PARAM_FIELD_TAG_SENDER_MASK | UCP_PARAM_FIELD_MT_WORKERS_SHARED;
++
++    params.features = UCP_FEATURE_WAKEUP | UCP_FEATURE_AM;
++
++    params.mt_workers_shared = 1;
++    params.tag_sender_mask = -1;
++    params.request_size = sizeof(UCXReqDescr);
++
++    params.request_init = UCXConnectedSocketImpl::request_init;
++    params.request_cleanup = UCXConnectedSocketImpl::request_cleanup;
++
++    status = ucp_init(&params, ucp_config, &ucp_context);
++    ucp_config_release(ucp_config);
++
++    if (UCS_OK != status) {
++        lderr(cct) << __func__ << "failed to init UCP context" << dendl;
++        ceph_abort();
++    }
++
++    ucp_context_print_info(ucp_context, stdout);
++}
++
++UCXStack::UCXStack(CephContext *cct, const string &t) : NetworkStack(cct, t)
++{
++    ldout(cct, 10) << __func__ << " constructing UCX stack "
++                   << " with " << get_num_worker() << " workers " << dendl;
++}
++
++UCXStack::~UCXStack()
++{
++    if (nullptr != ucp_context) {
++        ucp_cleanup(ucp_context);
++    }
++}
++
++void UCXStack::spawn_worker(unsigned i, std::function<void()> &&func)
++{
++    ucx_contex_create();
++    UCXWorker *w = dynamic_cast<UCXWorker *>(get_worker(i));
++    w->set_ucp_context(ucp_context);
++    threads.resize(i + 1);
++    threads[i] = std::thread(func);
++}
++
++void UCXStack::join_worker(unsigned i)
++{
++    ceph_assert(threads.size() > i && threads[i].joinable());
++    threads[i].join();
++}
++
+diff -Nur ceph-14.2.8/src/msg/async/ucx/UCXStack.h ceph-14.2.8-ucx/src/msg/async/ucx/UCXStack.h
+--- ceph-14.2.8/src/msg/async/ucx/UCXStack.h	1970-01-01 08:00:00.000000000 +0800
++++ ceph-14.2.8-ucx/src/msg/async/ucx/UCXStack.h	2024-09-12 19:46:40.372873984 +0800
+@@ -0,0 +1,333 @@
++// -*- mode:C++; tab-width:8; c-basic-offset:2; indent-tabs-mode:t -*-
++// vim: ts=8 sw=2 smarttab
++/*
++ * Ceph - scalable distributed file system
++ *
++ * Copyright (c) Huawei Technologies Co., Ltd. 2023-2023.
++ *
++ * Author: Chunsong Feng <fengchunsong@huawei.com>
++ *
++ * This is free software; you can redistribute it and/or
++ * modify it under the terms of the GNU Lesser General Public
++ * License version 2.1, as published by the Free Software
++ * Foundation.  See file COPYING.
++ *
++ */
++
++#ifndef CEPH_UCXSTACK_H
++#define CEPH_UCXSTACK_H
++
++#include <vector>
++#include <thread>
++#include <deque>
++
++#include "common/ceph_context.h"
++#include "common/debug.h"
++#include "common/errno.h"
++
++#include "msg/async/Stack.h"
++#include "UCXEvent.h"
++
++extern "C" {
++#include <ucp/api/ucp.h>
++};
++
++class UCXStack;
++class UCXConnectedSocketImpl;
++class UCXServerSocketImpl;
++
++struct MsgHeader{
++    uint16_t ver = 1;
++    uint16_t tag = 0;
++    uint32_t data_len;
++    uint64_t seq;
++    uint32_t align = 0xFFFFFFFF;  
++    void hton(void) {
++        ver = htole16(ver);
++        tag = htole16(tag);
++        seq = htole64(seq);        
++        data_len = htole64(data_len);        
++        align = htole32(align);       
++    }
++    void ntoh(void) {
++        ver = le16toh(ver);
++        tag = le16toh(tag);
++        seq = le64toh(seq);
++        data_len = le64toh(data_len);
++        align = le32toh(align);      
++    }
++} __attribute__((packed));
++
++struct UCXReqDescr {
++    UCXConnectedSocketImpl *conn;
++    bufferlist *bl;
++    ucp_dt_iov_t *iov_list;
++    uint64_t sn;
++};
++
++struct desc_data {
++    void *data;
++    size_t length;
++    struct MsgHeader msg;
++};
++
++class UCXWorker : public Worker {
++public:
++    explicit UCXWorker(CephContext *c, unsigned i);
++    virtual ~UCXWorker();
++
++    int listen(entity_addr_t &addr, unsigned addr_slot, const SocketOptions &opts, ServerSocket *) override;
++    int connect(const entity_addr_t &addr, const SocketOptions &opts, ConnectedSocket *socket) override;
++    void initialize() override;
++    void destroy() override;
++
++    void accept_connection(UCXConnectedSocketImpl *conn, ucp_conn_request_h conn_req);
++    static void accept_cb(ucp_conn_request_h conn_req, void *arg);
++    static void ep_error_cb(void *arg, ucp_ep_h ep, ucs_status_t status);
++    static void ep_error_cb_client(void *arg, ucp_ep_h ep, ucs_status_t status);
++
++    static ucs_status_t am_recv_callback(void *arg, const void *header, size_t header_length, void *data, size_t length,
++        const ucp_am_recv_param_t *param);
++
++    ucp_worker_h get_ucp_worker()
++    {
++        return ucp_worker;
++    }
++
++    void set_ucp_context(ucp_context_h ctx)
++    {
++	ucp_context = ctx;
++    }
++
++    UCXEventManager *get_manager()
++    {
++        return manager;
++    }
++
++    void erase_connection(ucp_ep_h ucp_ep)
++    {
++        conn_map.erase(ucp_ep);
++    }
++
++    UCXConnectedSocketImpl *find_connection(ucp_ep_h ucp_ep)
++    {
++        if (conn_map.count(ucp_ep) == 0)
++            return nullptr;
++        return conn_map[ucp_ep];
++    }
++    void erase_listen_fd(int fd)
++    {
++        listen_map.erase(fd);
++    }
++
++    UCXServerSocketImpl *find_listener(int fd)
++    {
++        if (listen_map.count(fd) == 0)
++            return nullptr;
++        return listen_map[fd];
++    }    
++
++    void handle_poll(uint64_t fd_or_id);
++
++private:
++    UCXEventManager *manager;
++    ucp_worker_h ucp_worker = nullptr;
++    ucp_context_h ucp_context = nullptr;
++    EventCallbackRef event_handler;
++
++    std::set<int> accepting;
++    std::unordered_map<ucp_ep_h, UCXConnectedSocketImpl *> conn_map;
++    std::unordered_map<int, UCXServerSocketImpl *> listen_map;
++    int ucp_fd = -1;
++
++    void set_recv_handler(void);
++};
++
++class UCXConnectedSocketImpl : public ConnectedSocketImpl {
++    static constexpr __u16 PAGE_SIZE_ALIGNMENT = 4096;
++    
++    UCXEventManager *manager;
++    bool use_zero_copy;
++public:
++    static constexpr unsigned AM_ID = 0x43657068; // Ceph
++    enum CONNECT_STATE {
++        CONNECTING = 0,
++        CONNECTED,
++        DISCONNECTED,
++        CLOSED,
++    };
++    ucp_ep_h ucp_ep = nullptr;
++    uint64_t sn_send = 0;
++    uint64_t sn_recv = 0;
++    std::set<UCXReqDescr *> send_reqs;
++    std::set<UCXReqDescr *> recv_reqs;
++    CephContext *get_cct()
++    {
++        return cct;
++    }
++    UCXWorker *get_worker()
++    {
++        return worker;
++    }
++
++    UCXConnectedSocketImpl(UCXWorker *w, int fd);
++    virtual ~UCXConnectedSocketImpl();
++
++    int is_connected() override
++    {
++        return (conn_state == CONNECTED) && (ucp_ep != nullptr);
++    };
++    ssize_t read(char *, size_t) override;
++    ssize_t zero_copy_read(ceph::bufferlist &bl, size_t length) override;
++    ssize_t send(bufferlist &bl, bool more) override;
++    void shutdown() override;
++    void close() override;
++    int fd() const override
++    {
++        return conn_fd;
++    }
++    int getsockname(int sockfd, struct sockaddr *addr, socklen_t *addrlen) override;                       
++    int socket_fd() const override
++    {
++        return conn_fd;
++    }
++
++    
++    void set_sockaddr(const struct sockaddr *sa){
++        memcpy(&sock_addr, sa, sizeof(sock_addr));
++    }
++    static void request_init(void *req);
++    static void request_cleanup(void *req);
++
++    ssize_t do_send(bufferlist &bl);
++    void conn_release_recvs();
++    void ucx_ep_close(bool close_event);
++
++    static void send_completion_cb(void *req, ucs_status_t status, void *userdata);
++
++    static void am_recv_data_callback(void *req, ucs_status_t status, size_t length, void *user_data);
++    ucs_status_t process_recv_request(ucp_worker_h ucp_worker, void *data, size_t length, MsgHeader &msg);
++
++    ssize_t read_buffers(char *rbuf, size_t bytes);
++
++    bool merge_out_of_order();
++    void insert_recv_buffers(uint64_t sn, bufferlist &bl, size_t length);
++    void insert_out_of_order(uint64_t seg, bufferlist &bl)
++    {
++        auto it = out_of_order_map.find(seg);
++        if (it == out_of_order_map.end())
++        {
++            out_of_order_map.emplace(seg, std::move(bl));
++        }
++        else
++        {
++            it->second.append(std::move(bl));
++        }        
++    }
++    void set_connect_stat(enum CONNECT_STATE stat)
++    {
++        conn_state = stat;
++    }
++    enum CONNECT_STATE get_connect_stat(void)
++    {
++        return conn_state;
++    }
++    bufferlist create_bufferlist_with_hint(size_t length, MsgHeader &msg);
++
++private:
++    CephContext *cct;
++    UCXWorker *worker;
++    ucp_worker_h ucp_worker;
++    bufferlist rx_bl;
++    std::map<uint64_t, bufferlist> out_of_order_map;
++    int conn_fd;
++    enum CONNECT_STATE conn_state = CONNECTING;
++    struct sockaddr sock_addr;
++    int submit(bufferlist &bl, MsgHeader *msg, const void *buffer, size_t count, ucp_datatype_t type);  
++};
++
++class UCXServerSocketImpl : public ServerSocketImpl {
++public:
++    UCXServerSocketImpl(UCXWorker *w, int server_socket, entity_addr_t &a, unsigned addr_slot);
++    ~UCXServerSocketImpl();
++
++    int accept(ConnectedSocket *sock, const SocketOptions &opt, entity_addr_t *out, Worker *w) override;
++    void abort_accept() override;
++    int fd() const override
++    {
++        return server_fd;
++    }
++
++    UCXWorker *get_worker()
++    {
++        return worker;
++    }
++
++    CephContext *cct()
++    {
++        return worker->cct;
++    }
++
++    void add_conn_request(ucp_conn_request_h conn_req)
++    {
++        conn_request_queue.push_back(conn_req);
++    }
++
++    void set_ucp_listener(ucp_listener_h listener)
++    {
++        ucp_listener = listener;
++    }
++private:
++    UCXWorker *worker;
++    int server_fd;
++    std::deque<ucp_conn_request_h> conn_request_queue;
++    ucp_listener_h ucp_listener = nullptr;
++
++    ucp_conn_request_h pop_conn_request()
++    {
++        if (conn_request_queue.empty()) {
++            return nullptr;
++        }
++
++        ucp_conn_request_h conn_req = conn_request_queue.front();
++        conn_request_queue.pop_front();
++        return conn_req;
++    }
++};
++
++class UCXStack : public NetworkStack {
++public:
++    explicit UCXStack(CephContext *cct, const string &t);
++    virtual ~UCXStack();
++
++    bool support_zero_copy_read() const override
++    {
++        return true;
++    }
++
++    bool nonblock_connect_need_writable_event() const override
++    {
++        return false;
++    }
++
++    void spawn_worker(unsigned i, std::function<void()> &&func) override;
++    void join_worker(unsigned i) override;
++
++    bool is_ready() override
++    {
++        return nullptr != ucp_context;
++    };
++
++    ucp_context_h get_ucp_context()
++    {
++        return ucp_context;
++    }
++
++private:
++    vector<std::thread> threads;
++    ucp_context_h ucp_context = nullptr;
++
++    void ucx_contex_create();
++};
++
++#endif
+diff -Nur ceph-14.2.8/src/msg/CMakeLists.txt ceph-14.2.8-ucx/src/msg/CMakeLists.txt
+--- ceph-14.2.8/src/msg/CMakeLists.txt	2020-03-03 01:49:20.000000000 +0800
++++ ceph-14.2.8-ucx/src/msg/CMakeLists.txt	2024-09-12 19:46:40.376873984 +0800
+@@ -49,6 +49,13 @@
+     async/rdma/RDMAStack.cc)
+ endif()
+ 
++if(HAVE_UCX)
++  list(APPEND msg_srcs
++    async/dpdk/UserspaceEvent.cc
++    async/ucx/UCXStack.cc
++    async/ucx/UCXEvent.cc)
++endif(HAVE_UCX)
++
+ add_library(common-msg-objs OBJECT ${msg_srcs})
+ 
+ if(WITH_DPDK)
+diff -Nur ceph-14.2.8/src/test/alpine-edge/install-deps.sh ceph-14.2.8-ucx/src/test/alpine-edge/install-deps.sh
+--- ceph-14.2.8/src/test/alpine-edge/install-deps.sh	2020-03-03 01:49:20.000000000 +0800
++++ ceph-14.2.8-ucx/src/test/alpine-edge/install-deps.sh	2024-09-12 19:46:40.428873984 +0800
+@@ -318,7 +318,7 @@
+ 	if [ "$control" != "debian/control" ] ; then rm $control; fi
+ 	$SUDO apt-get install -y libxmlsec1 libxmlsec1-nss libxmlsec1-openssl libxmlsec1-dev
+         ;;
+-    centos|fedora|rhel|ol|virtuozzo)
++    centos|fedora|rhel|ol|virtuozzo|openEuler)
+         yumdnf="yum"
+         builddepcmd="yum-builddep -y --setopt=*.skip_if_unavailable=true"
+         if test "$(echo "$VERSION_ID >= 22" | bc)" -ne 0; then
+diff -Nur ceph-14.2.8/src/test/centos-7/install-deps.sh ceph-14.2.8-ucx/src/test/centos-7/install-deps.sh
+--- ceph-14.2.8/src/test/centos-7/install-deps.sh	2020-03-03 01:49:20.000000000 +0800
++++ ceph-14.2.8-ucx/src/test/centos-7/install-deps.sh	2024-09-12 19:46:40.428873984 +0800
+@@ -318,7 +318,7 @@
+ 	if [ "$control" != "debian/control" ] ; then rm $control; fi
+ 	$SUDO apt-get install -y libxmlsec1 libxmlsec1-nss libxmlsec1-openssl libxmlsec1-dev
+         ;;
+-    centos|fedora|rhel|ol|virtuozzo)
++    centos|fedora|rhel|ol|virtuozzo|openEuler)
+         yumdnf="yum"
+         builddepcmd="yum-builddep -y --setopt=*.skip_if_unavailable=true"
+         if test "$(echo "$VERSION_ID >= 22" | bc)" -ne 0; then
+diff -Nur ceph-14.2.8/src/test/debian-jessie/install-deps.sh ceph-14.2.8-ucx/src/test/debian-jessie/install-deps.sh
+--- ceph-14.2.8/src/test/debian-jessie/install-deps.sh	2020-03-03 01:49:20.000000000 +0800
++++ ceph-14.2.8-ucx/src/test/debian-jessie/install-deps.sh	2024-09-12 19:46:40.428873984 +0800
+@@ -318,7 +318,7 @@
+ 	if [ "$control" != "debian/control" ] ; then rm $control; fi
+ 	$SUDO apt-get install -y libxmlsec1 libxmlsec1-nss libxmlsec1-openssl libxmlsec1-dev
+         ;;
+-    centos|fedora|rhel|ol|virtuozzo)
++    centos|fedora|rhel|ol|virtuozzo|openEuler)
+         yumdnf="yum"
+         builddepcmd="yum-builddep -y --setopt=*.skip_if_unavailable=true"
+         if test "$(echo "$VERSION_ID >= 22" | bc)" -ne 0; then
+diff -Nur ceph-14.2.8/src/test/fedora-29/install-deps.sh ceph-14.2.8-ucx/src/test/fedora-29/install-deps.sh
+--- ceph-14.2.8/src/test/fedora-29/install-deps.sh	2020-03-03 01:49:20.000000000 +0800
++++ ceph-14.2.8-ucx/src/test/fedora-29/install-deps.sh	2024-09-12 19:46:40.428873984 +0800
+@@ -318,7 +318,7 @@
+ 	if [ "$control" != "debian/control" ] ; then rm $control; fi
+ 	$SUDO apt-get install -y libxmlsec1 libxmlsec1-nss libxmlsec1-openssl libxmlsec1-dev
+         ;;
+-    centos|fedora|rhel|ol|virtuozzo)
++    centos|fedora|rhel|ol|virtuozzo|openEuler)
+         yumdnf="yum"
+         builddepcmd="yum-builddep -y --setopt=*.skip_if_unavailable=true"
+         if test "$(echo "$VERSION_ID >= 22" | bc)" -ne 0; then
+diff -Nur ceph-14.2.8/src/test/msgr/test_async_networkstack.cc ceph-14.2.8-ucx/src/test/msgr/test_async_networkstack.cc
+--- ceph-14.2.8/src/test/msgr/test_async_networkstack.cc	2020-03-03 01:49:20.000000000 +0800
++++ ceph-14.2.8-ucx/src/test/msgr/test_async_networkstack.cc	2024-09-12 19:46:37.848873984 +0800
+@@ -72,20 +72,17 @@
+   NetworkWorkerTest() {}
+   void SetUp() override {
+     cerr << __func__ << " start set up " << GetParam() << std::endl;
+-    if (strncmp(GetParam(), "dpdk", 4)) {
++    if (strncmp(GetParam(), "ucx", 3)) {
+       g_ceph_context->_conf.set_val("ms_type", "async+posix");
+       addr = "127.0.0.1:15000";
+       port_addr = "127.0.0.1:15001";
+     } else {
+-      g_ceph_context->_conf.set_val_or_die("ms_type", "async+dpdk");
+-      g_ceph_context->_conf.set_val_or_die("ms_dpdk_debug_allow_loopback", "true");
++      g_ceph_context->_conf.set_val_or_die("ms_type", "async+ucx");
+       g_ceph_context->_conf.set_val_or_die("ms_async_op_threads", "2");
+-      g_ceph_context->_conf.set_val_or_die("ms_dpdk_coremask", "0x7");
+-      g_ceph_context->_conf.set_val_or_die("ms_dpdk_host_ipv4_addr", "172.16.218.3");
+-      g_ceph_context->_conf.set_val_or_die("ms_dpdk_gateway_ipv4_addr", "172.16.218.2");
+-      g_ceph_context->_conf.set_val_or_die("ms_dpdk_netmask_ipv4_addr", "255.255.255.0");
+-      addr = "172.16.218.3:15000";
+-      port_addr = "172.16.218.3:15001";
++      g_ceph_context->_conf.set_val_or_die("ms_async_ucx_device", "mlx5_0:1");
++      g_ceph_context->_conf.set_val_or_die("ms_async_ucx_tls", "rc_mlx5");
++      addr = "192.168.37.197:15000";
++      port_addr = "192.168.37.197:15001";
+     }
+     stack = NetworkStack::create(g_ceph_context, GetParam());
+     stack->start();
+@@ -855,8 +852,10 @@
+       while (true) {
+         char buf[4096];
+         bufferptr data;
++	bufferlist bl;
++	bl.reserve(4096);
+         if (factory->zero_copy_read) {
+-          r = socket.zero_copy_read(data);
++          r = socket.zero_copy_read(bl, 4096);
+         } else {
+           r = socket.read(buf, sizeof(buf));
+         }
+@@ -1073,6 +1072,7 @@
+ #ifdef HAVE_DPDK
+     "dpdk",
+ #endif
++    "ucx",
+     "posix"
+   )
+ );
+diff -Nur ceph-14.2.8/src/test/msgr/test_msgr.cc ceph-14.2.8-ucx/src/test/msgr/test_msgr.cc
+--- ceph-14.2.8/src/test/msgr/test_msgr.cc	2020-03-03 01:49:20.000000000 +0800
++++ ceph-14.2.8-ucx/src/test/msgr/test_msgr.cc	2024-09-12 19:46:37.848873984 +0800
+@@ -2278,7 +2278,13 @@
+   MessengerTest,
+   ::testing::Values(
+     "async+posix",
+-    "simple"
++    "simple",
++#ifdef HAVE_RDMA
++    "async+rdma",
++#endif
++#ifdef HAVE_UCX
++    "async+ucx"
++#endif
+   )
+ );
+ 
+diff -Nur ceph-14.2.8/src/test/opensuse-13.2/install-deps.sh ceph-14.2.8-ucx/src/test/opensuse-13.2/install-deps.sh
+--- ceph-14.2.8/src/test/opensuse-13.2/install-deps.sh	2020-03-03 01:49:20.000000000 +0800
++++ ceph-14.2.8-ucx/src/test/opensuse-13.2/install-deps.sh	2024-09-12 19:46:40.428873984 +0800
+@@ -318,7 +318,7 @@
+ 	if [ "$control" != "debian/control" ] ; then rm $control; fi
+ 	$SUDO apt-get install -y libxmlsec1 libxmlsec1-nss libxmlsec1-openssl libxmlsec1-dev
+         ;;
+-    centos|fedora|rhel|ol|virtuozzo)
++    centos|fedora|rhel|ol|virtuozzo|openEuler)
+         yumdnf="yum"
+         builddepcmd="yum-builddep -y --setopt=*.skip_if_unavailable=true"
+         if test "$(echo "$VERSION_ID >= 22" | bc)" -ne 0; then
+diff -Nur ceph-14.2.8/src/test/ubuntu-16.04/install-deps.sh ceph-14.2.8-ucx/src/test/ubuntu-16.04/install-deps.sh
+--- ceph-14.2.8/src/test/ubuntu-16.04/install-deps.sh	2020-03-03 01:49:20.000000000 +0800
++++ ceph-14.2.8-ucx/src/test/ubuntu-16.04/install-deps.sh	2024-09-12 19:46:40.428873984 +0800
+@@ -318,7 +318,7 @@
+ 	if [ "$control" != "debian/control" ] ; then rm $control; fi
+ 	$SUDO apt-get install -y libxmlsec1 libxmlsec1-nss libxmlsec1-openssl libxmlsec1-dev
+         ;;
+-    centos|fedora|rhel|ol|virtuozzo)
++    centos|fedora|rhel|ol|virtuozzo|openEuler)
+         yumdnf="yum"
+         builddepcmd="yum-builddep -y --setopt=*.skip_if_unavailable=true"
+         if test "$(echo "$VERSION_ID >= 22" | bc)" -ne 0; then
+diff -Nur ceph-14.2.8/src/test/ubuntu-18.04/install-deps.sh ceph-14.2.8-ucx/src/test/ubuntu-18.04/install-deps.sh
+--- ceph-14.2.8/src/test/ubuntu-18.04/install-deps.sh	2020-03-03 01:49:20.000000000 +0800
++++ ceph-14.2.8-ucx/src/test/ubuntu-18.04/install-deps.sh	2024-09-12 19:46:40.428873984 +0800
+@@ -318,7 +318,7 @@
+ 	if [ "$control" != "debian/control" ] ; then rm $control; fi
+ 	$SUDO apt-get install -y libxmlsec1 libxmlsec1-nss libxmlsec1-openssl libxmlsec1-dev
+         ;;
+-    centos|fedora|rhel|ol|virtuozzo)
++    centos|fedora|rhel|ol|virtuozzo|openEuler)
+         yumdnf="yum"
+         builddepcmd="yum-builddep -y --setopt=*.skip_if_unavailable=true"
+         if test "$(echo "$VERSION_ID >= 22" | bc)" -ne 0; then

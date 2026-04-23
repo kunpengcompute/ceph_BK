@@ -1,0 +1,2748 @@
+diff -uprN ../ceph-14.2.8/src/common/legacy_config_opts.h ./ceph-14.2.8/src/common/legacy_config_opts.h
+--- ../ceph-14.2.8/src/common/legacy_config_opts.h	2020-03-03 01:49:20.000000000 +0800
++++ ./ceph-14.2.8/src/common/legacy_config_opts.h	2021-12-28 11:41:58.844054730 +0800
+@@ -94,6 +94,16 @@ OPTION(xio_max_conns_per_portal, OPT_INT
+ OPTION(xio_transport_type, OPT_STR) // xio transport type: {rdma or tcp}
+ OPTION(xio_max_send_inline, OPT_INT) // xio maximum threshold to send inline
+ 
++OPTION(compaction_enabled, OPT_BOOL)
++OPTION(bluestore_min_compaction_enable, OPT_BOOL)
++OPTION(compaction_opt_space_enabled, OPT_BOOL)
++OPTION(compaction_deferred_write, OPT_BOOL)
++OPTION(bluestore_compaction_min_alloc_size_hdd, OPT_U32)
++OPTION(bluestore_compaction_min_alloc_size_ssd, OPT_U32)
++OPTION(bluestore_compaction_min_blob_size_hdd, OPT_U32)
++OPTION(bluestore_compaction_min_blob_size_ssd, OPT_U32)
++
++
+ OPTION(compressor_zlib_isal, OPT_BOOL)
+ OPTION(compressor_zlib_level, OPT_INT) //regular zlib compression level, not applicable to isa-l optimized version
+ 
+diff -uprN ../ceph-14.2.8/src/common/options.cc ./ceph-14.2.8/src/common/options.cc
+--- ../ceph-14.2.8/src/common/options.cc	2020-03-03 01:49:20.000000000 +0800
++++ ./ceph-14.2.8/src/common/options.cc	2021-12-28 14:58:12.254054730 +0800
+@@ -806,6 +806,49 @@ std::vector<Option> get_global_options()
+     Option("xio_max_send_inline", Option::TYPE_SIZE, Option::LEVEL_ADVANCED)
+     .set_default(512)
+     .set_description(""),
++     
++    // Compaction
++     Option("compaction_enabled", Option::TYPE_BOOL, Option::LEVEL_ADVANCED)
++     .set_default(true)
++     .set_description("Enable KPS compaction support for compression if available"),
++
++     Option("bluestore_min_compaction_enable", Option::TYPE_BOOL, Option::LEVEL_ADVANCED)
++     .set_default(false)
++     .set_flag(Option::FLAG_CREATE)
++     .set_description(""),
++
++     Option("compaction_opt_space_enabled", Option::TYPE_BOOL, Option::LEVEL_ADVANCED)
++       .set_default(true)
++       .set_flag(Option::FLAG_CREATE)
++       .set_description("Optimal space allocation for KPS compaction"),
++
++     Option("compaction_deferred_write", Option::TYPE_BOOL, Option::LEVEL_ADVANCED)
++       .set_default(false)
++       .set_flag(Option::FLAG_RUNTIME)
++       .set_description("Deferred write path for compaction IO"),
++
++     Option("bluestore_compaction_min_alloc_size_hdd", Option::TYPE_SIZE, Option::LEVEL_ADVANCED)
++       .set_default(4_K)
++       .set_flag(Option::FLAG_CREATE)
++       .set_description("Default hdd min_alloc_size value for compaction model"),
++
++     Option("bluestore_compaction_min_alloc_size_ssd", Option::TYPE_SIZE, Option::LEVEL_ADVANCED)
++       .set_default(4_K)
++       .set_flag(Option::FLAG_CREATE)
++       .set_description("Default ssd min_alloc_size value for compaction model"),
++
++     Option("bluestore_compaction_min_blob_size_hdd", Option::TYPE_SIZE, Option::LEVEL_ADVANCED)
++       .set_default(128_K)// raw 128_K
++       .set_flag(Option::FLAG_RUNTIME)
++       .set_description("Default value of bluestore_compaction_min_blob_size for rotational media"),
++
++     Option("bluestore_compaction_min_blob_size_ssd", Option::TYPE_SIZE, Option::LEVEL_ADVANCED)
++       .set_default(8_K)
++       .set_flag(Option::FLAG_RUNTIME)
++       .set_description("Default value of bluestore_compaction_min_blob_size for non_rotational (solid state) media"),
++
++
++
+ 
+     // Compressor
+     Option("compressor_zlib_isal", Option::TYPE_BOOL, Option::LEVEL_ADVANCED)
+@@ -4350,7 +4393,8 @@ std::vector<Option> get_global_options()
+     .set_description(""),
+ 
+     Option("bluefs_allocator", Option::TYPE_STR, Option::LEVEL_DEV)
+-    .set_default("bitmap")
++    .set_default("hybrid")
++    .set_enum_allowed({"bitmap", "stupid", "avl", "hybrid"})
+     .set_description(""),
+ 
+     Option("bluefs_preextend_wal_files", Option::TYPE_BOOL, Option::LEVEL_ADVANCED)
+@@ -4705,8 +4749,8 @@ std::vector<Option> get_global_options()
+     .set_description("Key value database to use for bluestore"),
+ 
+     Option("bluestore_allocator", Option::TYPE_STR, Option::LEVEL_ADVANCED)
+-    .set_default("bitmap")
+-    .set_enum_allowed({"bitmap", "stupid"})
++    .set_default("hybrid")
++    .set_enum_allowed({"bitmap", "stupid", "avl", "hybrid"})
+     .set_description("Allocator policy")
+     .set_long_description("Allocator to use for bluestore.  Stupid should only be used for testing."),
+ 
+@@ -4929,6 +4973,20 @@ std::vector<Option> get_global_options()
+     Option("bluestore_log_collection_list_age", Option::TYPE_FLOAT, Option::LEVEL_ADVANCED)
+     .set_default(60)
+     .set_description("log collection list operation if it's slower than this age (seconds)"),
++    
++    Option("bluestore_avl_alloc_bf_threshold", Option::TYPE_UINT, Option::LEVEL_DEV)
++      .set_default(131072)
++      .set_description(""),
++
++    Option("bluestore_avl_alloc_bf_free_pct", Option::TYPE_UINT, Option::LEVEL_DEV)
++      .set_default(4)
++      .set_description(""),
++    
++    Option("bluestore_hybrid_alloc_mem_cap", Option::TYPE_UINT, Option::LEVEL_DEV)
++      .set_default(64_M)
++      .set_description("Maximum RAM hybrid allocator should use before enabling bitmap supplement"),
++
++
+ 
+     // -----------------------------------------
+     // kstore
+diff -uprN ../ceph-14.2.8/src/os/bluestore/Allocator.cc ./ceph-14.2.8/src/os/bluestore/Allocator.cc
+--- ../ceph-14.2.8/src/os/bluestore/Allocator.cc	2020-03-03 01:49:20.000000000 +0800
++++ ./ceph-14.2.8/src/os/bluestore/Allocator.cc	2021-12-28 11:42:45.484054730 +0800
+@@ -4,13 +4,16 @@
+ #include "Allocator.h"
+ #include "StupidAllocator.h"
+ #include "BitmapAllocator.h"
++#include "AvlAllocator.h"
++#include "HybridAllocator.h"
++
+ #include "common/debug.h"
+ #include "common/admin_socket.h"
+ #define dout_subsys ceph_subsys_bluestore
+ 
+ class Allocator::SocketHook : public AdminSocketHook {
+   Allocator *alloc;
+-
++  friend class Allocator;
+   std::string name;
+ public:
+   explicit SocketHook(Allocator *alloc, const std::string& _name) : alloc(alloc), name(_name)
+@@ -96,6 +99,9 @@ Allocator::~Allocator()
+   delete asok_hook;
+ }
+ 
++const string& Allocator::get_name() const{
++    return asok_hook->name;
++}
+ 
+ Allocator *Allocator::create(CephContext* cct, string type,
+                              int64_t size, int64_t block_size, const std::string& name)
+@@ -105,7 +111,12 @@ Allocator *Allocator::create(CephContext
+     alloc = new StupidAllocator(cct, name);
+   } else if (type == "bitmap") {
+     alloc = new BitmapAllocator(cct, size, block_size, name);
++  } else if (type == "avl"){
++     return new AvlAllocator(cct, size, block_size, name);
++  } else if (type == "hybrid"){
++     return new HybridAllocator(cct, size, block_size, cct->_conf.get_val<uint64_t>("bluestore_hybrid_alloc_mem_cap"), name);
+   }
++
+   if (alloc == nullptr) {
+     lderr(cct) << "Allocator::" << __func__ << " unknown alloc type "
+ 	     << type << dendl;
+diff -uprN ../ceph-14.2.8/src/os/bluestore/Allocator.h ./ceph-14.2.8/src/os/bluestore/Allocator.h
+--- ../ceph-14.2.8/src/os/bluestore/Allocator.h	2020-03-03 01:49:20.000000000 +0800
++++ ./ceph-14.2.8/src/os/bluestore/Allocator.h	2021-12-28 11:43:02.974054730 +0800
+@@ -61,7 +61,9 @@ public:
+ 
+   static Allocator *create(CephContext* cct, string type, int64_t size,
+ 			   int64_t block_size, const std::string& name = "");
+-private:
++  const string& get_name() const;
++
++  private:
+   class SocketHook;
+   SocketHook* asok_hook = nullptr;
+ };
+diff -uprN ../ceph-14.2.8/src/os/bluestore/AvlAllocator.cc ./ceph-14.2.8/src/os/bluestore/AvlAllocator.cc
+--- ../ceph-14.2.8/src/os/bluestore/AvlAllocator.cc	1970-01-01 08:00:00.000000000 +0800
++++ ./ceph-14.2.8/src/os/bluestore/AvlAllocator.cc	2021-12-28 11:43:19.204054730 +0800
+@@ -0,0 +1,391 @@
++#include "AvlAllocator.h"
++
++#include <limits>
++
++#include "common/config_proxy.h"
++#include "common/debug.h"
++
++#define dout_context cct
++#define dout_subsys ceph_subsys_bluestore
++#undef dout_prefix
++#define dout_prefix *_dout << "AvlAllocator "
++
++MEMPOOL_DEFINE_OBJECT_FACTORY(range_seg_t, range_seg_t, bluestore_alloc);
++
++namespace {
++  struct range_t {
++    uint64_t start;
++    uint64_t end;
++  };
++}
++
++template<class Tree>
++uint64_t AvlAllocator::_block_picker(const Tree& t,
++             uint64_t *cursor,
++             uint64_t size,
++             uint64_t align)
++{
++  const auto compare = t.key_comp();
++  for (auto rs = t.lower_bound(range_t{*cursor, size}, compare);
++       rs != t.end(); ++rs) {
++    uint64_t offset = p2roundup(rs->start, align);
++    if (offset + size <= rs->end) {
++      *cursor = offset + size;
++      return offset;
++    }
++  }
++
++  if (*cursor == 0) {
++    return -1ULL;
++  }
++  *cursor = 0;
++  return _block_picker(t, cursor, size, align);
++}
++
++void AvlAllocator::_add_to_tree(uint64_t start, uint64_t size)
++{
++  ceph_assert(size != 0);
++
++  uint64_t end = start + size;
++
++  auto rs_after = range_tree.upper_bound(range_t{start, end},
++           range_tree.key_comp());
++  auto rs_before = range_tree.end();
++  if (rs_after != range_tree.begin()) {
++    rs_before = std::prev(rs_after);
++  }
++
++  bool merge_before = (rs_before != range_tree.end() && rs_before->end == start);
++  bool merge_after = (rs_after != range_tree.end() && rs_after->start == end);
++   
++  if (merge_before && merge_after) {
++    _range_size_tree_rm(*rs_before);
++    _range_size_tree_rm(*rs_after);
++    rs_after->start = rs_before->start;
++    range_tree.erase_and_dispose(rs_before, dispose_rs{});
++    _range_size_tree_try_insert(*rs_after);
++  } else if (merge_before) {
++    _range_size_tree_rm(*rs_before);
++    rs_before->end = end;
++    _range_size_tree_try_insert(*rs_before);
++  } else if (merge_after) {
++    _range_size_tree_rm(*rs_after);
++    rs_after->start = start;
++    _range_size_tree_try_insert(*rs_after);
++  } else {
++    _try_insert_range(start, end, &rs_after);
++  }
++}
++
++void AvlAllocator::_process_range_removal(uint64_t start, uint64_t end,
++  AvlAllocator::range_tree_t::iterator& rs) 
++{
++  bool left_over = (rs->start != start);
++  bool right_over = (rs->end != end);
++
++  _range_size_tree_rm(*rs);
++
++  if (left_over && right_over) {
++    auto old_right_end = rs->end;
++    auto insert_pos = rs;
++    ceph_assert(insert_pos != range_tree.end());
++    ++insert_pos;
++    rs->end = start;
++
++  _try_insert_range(end, old_right_end, &insert_pos);
++  _range_size_tree_try_insert(*rs);
++  } else if (left_over) {
++    rs->end = start;
++    _range_size_tree_try_insert(*rs);
++  } else if (right_over) {
++      rs->start = end;
++      _range_size_tree_try_insert(*rs);
++  } else {
++    range_tree.erase_and_dispose(rs, dispose_rs{});
++  }
++}
++
++void AvlAllocator::_remove_from_tree(uint64_t start, uint64_t size)
++{
++  uint64_t end = start + size;
++  ceph_assert(size != 0);
++  ceph_assert(size <= num_free);
++
++  auto rs = range_tree.find(range_t{start, end}, range_tree.key_comp());
++
++  ceph_assert(rs != range_tree.end());
++  ceph_assert(rs->start <= start);
++  ceph_assert(rs->end >= end);
++
++  _process_range_removal(start, end, rs);
++}
++
++void AvlAllocator::_try_remove_from_tree(uint64_t start, uint64_t size,
++  std::function<void(uint64_t, uint64_t, bool)> cb)
++{
++  uint64_t end = start + size;
++  ceph_assert(size != 0);
++
++  auto rs = range_tree.find(range_t{start, end},
++    range_tree.key_comp());
++
++  if (rs == range_tree.end() || rs->start >= end) {
++    cb(start, size, false);
++    return;
++  }
++
++  do {
++    auto next_rs = rs;
++    ++next_rs;
++
++    if (start < rs->start) {
++      cb(start, rs->start - start, false);
++      start = rs->start;
++    }
++    auto range_end = std::min(rs->end, end);
++    _process_range_removal(start, range_end, rs);
++    cb(start, range_end - start, true);
++    start = range_end;
++
++    rs = next_rs;
++  } while (rs != range_tree.end() && rs->start < end && start < end);
++
++  if (start < end) {
++    cb(start, end - start, false);
++  }
++}
++
++int64_t AvlAllocator::_allocate(
++  uint64_t want,
++  uint64_t unit,
++  uint64_t max_alloc_size,
++  int64_t hint,
++  PExtentVector* extents)
++{
++  uint64_t allocated = 0;
++  while (allocated < want) {
++    uint64_t offset, length;
++    int r = _allocate(std::min(max_alloc_size, want - allocated),
++      unit, &offset, &length);
++    if (r < 0) {
++      break;
++    }
++    extents->emplace_back(offset, length);
++    allocated += length;
++  }
++  return allocated ? allocated : -ENOSPC;
++}
++
++int AvlAllocator::_allocate(
++  uint64_t size,
++  uint64_t unit,
++  uint64_t *offset,
++  uint64_t *length)
++{
++  uint64_t max_size = 0;
++  if (auto p = range_size_tree.rbegin(); p!= range_size_tree.rend()) {
++    max_size = p->end - p->start;
++  }
++
++  bool force_range_size_alloc = false;
++  if (max_size < size) {
++    if (max_size < unit) {
++      return -ENOSPC;
++    }
++    size = p2align(max_size, unit);
++    ceph_assert(size > 0);
++    force_range_size_alloc = true;
++  }
++
++  const uint64_t align = size & -size;
++  ceph_assert(align != 0);
++  uint64_t *cursor = &lbas[cbits(align) - 1];
++
++  const int free_pct = num_free * 100 / num_total;
++  uint64_t start = 0;
++
++  if (force_range_size_alloc ||
++      max_size < range_size_alloc_threshold ||
++      free_pct < range_size_alloc_free_pct) {
++    *cursor = 0;
++    start = _block_picker(range_size_tree, cursor, size, unit);
++  } else {
++    start = _block_picker(range_tree, cursor, size, unit);
++  }
++  if (start == -1ULL) {
++    return -ENOSPC;
++  }
++
++  _remove_from_tree(start, size);
++
++  *offset = start;
++  *length = size;
++  return 0;
++}
++
++void AvlAllocator::_release(const interval_set<uint64_t>& release_set)
++{
++  for (auto p = release_set.begin(); p != release_set.end(); ++p){
++    const auto offset = p.get_start();
++    const auto length = p.get_len();
++    ldout(cct, 10) << __func__ << std::hex
++      << " offset 0x" << offset
++      << " length 0x" << length
++      << std::dec << dendl;
++    _add_to_tree(offset, length);
++  }
++}
++
++void AvlAllocator::_release(const PExtentVector& release_set){
++  for (auto & e : release_set) {
++    ldout(cct, 10) << __func__ << std::hex
++      << " offset 0x" << e.offset
++      << " length 0x" << e.length
++      << std::dec << dendl;
++    _add_to_tree(e.offset, e.length);
++  }
++}
++
++void AvlAllocator::_shutdown()
++{
++  range_size_tree.clear();
++  range_tree.clear_and_dispose(dispose_rs{});
++}
++
++AvlAllocator::AvlAllocator(CephContext* cct,
++                           int64_t device_size,
++                           int64_t block_size,
++                           uint64_t max_mem,
++                           const std::string& name) :
++  Allocator(name),
++  num_total(device_size),
++  block_size(block_size),
++  range_size_alloc_threshold(
++    cct->_conf.get_val<uint64_t>("bluestore_avl_alloc_bf_threshold")),
++  range_size_alloc_free_pct(
++    cct->_conf.get_val<uint64_t>("bluestore_avl_alloc_bf_free_pct")),
++  range_count_cap(max_mem / sizeof(range_seg_t)),
++  cct(cct)
++{}
++
++AvlAllocator::AvlAllocator(CephContext* cct,
++                          int64_t device_size,
++                          int64_t block_size,
++                          const std::string& name) :
++  Allocator(name),
++  num_total(device_size),
++  block_size(block_size),
++  range_size_alloc_threshold(
++    cct->_conf.get_val<uint64_t>("bluestore_avl_alloc_bf_threshold")),
++  range_size_alloc_free_pct(
++    cct->_conf.get_val<uint64_t>("bluestore_avl_alloc_bf_free_pct")),
++  cct(cct)
++{}
++
++AvlAllocator::~AvlAllocator()
++{
++  shutdown();
++}
++
++int64_t AvlAllocator::allocate(
++  uint64_t want,
++  uint64_t unit,
++  uint64_t max_alloc_size,
++  int64_t hint,
++  PExtentVector* extents)
++{
++  ldout(cct, 10) << __func__ << std::hex
++                 << "want 0x" << want
++                 << "unit 0x" << unit
++                 << "max_alloc_size 0x" << max_alloc_size
++                 << "hint 0x" << hint
++                 << std::dec << dendl;
++  ceph_assert(isp2(unit));
++  ceph_assert(want % unit == 0);
++
++  if (max_alloc_size == 0) {
++    max_alloc_size = want;
++  }
++
++  if (constexpr auto cap = std::numeric_limits<decltype(bluestore_pextent_t::length)>::max();
++      max_alloc_size >= cap) {
++    max_alloc_size = p2align(uint64_t(cap), (uint64_t)block_size);
++  }
++  std::lock_guard l(lock);
++  return _allocate(want, unit, max_alloc_size, hint, extents);
++}
++
++void AvlAllocator::release(const interval_set<uint64_t>& release_set) {
++  std::lock_guard l(lock);
++  _release(release_set);
++}
++
++uint64_t AvlAllocator::get_free()
++{
++  std::lock_guard l(lock);
++  return num_free;
++}
++
++double AvlAllocator::get_fragmentation()
++{
++  std::lock_guard l(lock);
++  return _get_fragmentation();
++}
++
++void AvlAllocator::dump()
++{
++  std::lock_guard l(lock);
++  _dump();
++}
++
++void AvlAllocator::_dump() const
++{
++  ldout(cct, 0) << __func__ << "range_tree: " << dendl;
++  for (auto& rs : range_tree) {
++    ldout(cct, 0) << std::hex
++      << "0x" << rs.start << "~" <<rs.end
++      << std::dec
++      << dendl;
++  }
++
++  ldout(cct, 0) << __func__ << "range_size_tree: " << dendl;
++  for (auto& rs : range_size_tree) {
++     ldout(cct, 0) <<std::hex
++     << "0x" << rs.start << "~" << rs.end
++     << std::dec
++     << dendl;
++  }
++}
++
++void AvlAllocator::dump(std::function<void(uint64_t offset, uint64_t length)> notify)
++{
++  for (auto& rs : range_tree) {
++    notify(rs.start, rs.end - rs.start);
++  }
++}
++
++void AvlAllocator::init_add_free(uint64_t offset, uint64_t length)
++{
++  std::lock_guard l(lock);
++  ldout(cct, 10) << __func__ << std::hex
++                 << " offset 0x" << offset
++                 << " length 0x" << length
++                 << std::dec << dendl;
++  _add_to_tree(offset, length);
++}
++
++void AvlAllocator::init_rm_free(uint64_t offset, uint64_t length)
++{
++  std::lock_guard l(lock);
++  ldout(cct, 10) << __func__ << std::hex
++      << " offset 0x" << offset
++      << " length 0x" << length
++      << std::dec << dendl;
++  _remove_from_tree(offset, length);
++}
++
++void AvlAllocator::shutdown()
++{
++  std::lock_guard l(lock);
++  _shutdown();
++}
+diff -uprN ../ceph-14.2.8/src/os/bluestore/AvlAllocator.h ./ceph-14.2.8/src/os/bluestore/AvlAllocator.h
+--- ../ceph-14.2.8/src/os/bluestore/AvlAllocator.h	1970-01-01 08:00:00.000000000 +0800
++++ ./ceph-14.2.8/src/os/bluestore/AvlAllocator.h	2021-12-28 11:43:33.574054730 +0800
+@@ -0,0 +1,215 @@
++#pragma once
++
++#include <mutex>
++#include <boost/intrusive/avl_set.hpp>
++
++#include "Allocator.h"
++#include "os/bluestore/bluestore_types.h"
++#include "include/mempool.h"
++
++struct range_seg_t {
++  MEMPOOL_CLASS_HELPERS();
++  uint64_t start;
++  uint64_t end;
++
++  range_seg_t(uint64_t start, uint64_t end)
++    : start{start},
++      end{end}
++    {}
++
++  struct before_t {
++    template<typename KeyLeft, typename KeyRight>
++    bool operator()(const KeyLeft& lhs, const KeyRight& rhs) const {
++      return lhs.end <= rhs.start;
++    }
++  };
++  boost::intrusive::avl_set_member_hook<> offset_hook;
++
++  struct shorter_t {
++    template<typename KeyType>
++    bool operator()(const range_seg_t& lhs, const KeyType& rhs) const {
++      auto lhs_size = lhs.end - lhs.start;
++      auto rhs_size = rhs.end - rhs.start;
++      if (lhs_size < rhs_size) {
++          return true;
++      } else if (lhs_size > rhs_size) {
++          return false;
++      } else {
++          return lhs.start < rhs.start;
++      }
++    }
++  };
++  inline uint64_t length() const {
++    return end - start;
++  }
++  boost::intrusive::avl_set_member_hook<> size_hook;
++};
++
++class AvlAllocator : public Allocator {
++  struct dispose_rs {
++    void operator()(range_seg_t* p){
++      delete p;
++    }
++  };
++
++protected:
++  AvlAllocator(CephContext* cct, int64_t device_size, int64_t block_size,
++    uint64_t max_mem, 
++    const std::string& name);
++
++public:
++  AvlAllocator(CephContext* cct, int64_t device_size, int64_t block_size,
++    const std::string& name);
++  ~AvlAllocator();
++  int64_t allocate(
++    uint64_t want,
++    uint64_t unit,
++    uint64_t max_alloc_size,
++    int64_t hint,
++    PExtentVector *extents) override;
++  void release(const interval_set<uint64_t>& release_set) override;
++  int64_t get_capacity() const {
++    return num_total;
++  }
++
++  uint64_t get_block_size() const {
++    return block_size;
++  }
++  uint64_t get_free() override;
++  double get_fragmentation();
++
++  void dump() override;
++  void dump(std::function<void(uint64_t offset, uint64_t length)> notify) override;
++  void init_add_free(uint64_t offset, uint64_t length) override;
++  void init_rm_free(uint64_t offset, uint64_t length) override;
++  void shutdown()  override;
++
++private:
++  template<class Tree>
++  uint64_t _block_picker(const Tree& t, uint64_t *cursor, uint64_t size,
++    uint64_t align);
++  int _allocate(
++    uint64_t size,
++    uint64_t unit,
++    uint64_t *offset,
++    uint64_t *length);
++
++  using range_tree_t = 
++    boost::intrusive::avl_set<
++      range_seg_t,
++      boost::intrusive::compare<range_seg_t::before_t>,
++      boost::intrusive::member_hook<
++    	range_seg_t,
++    	boost::intrusive::avl_set_member_hook<>,
++    	&range_seg_t::offset_hook>>;
++  range_tree_t range_tree;    ///< main range tree
++
++  using range_size_tree_t=
++    boost::intrusive::avl_multiset<
++      range_seg_t,
++      boost::intrusive::compare<range_seg_t::shorter_t>,
++      boost::intrusive::member_hook<
++  range_seg_t,
++  boost::intrusive::avl_set_member_hook<>,
++  &range_seg_t::size_hook>,
++      boost::intrusive::constant_time_size<true>>;
++  range_size_tree_t range_size_tree;
++    
++  const int64_t num_total;   ///<device size
++  const uint64_t block_size; ///<block size
++  uint64_t num_free = 0;     ///< total bytes in freelist
++
++  static constexpr unsigned MAX_LBAS = 64;
++  uint64_t lbas[MAX_LBAS] = {0};
++  uint64_t range_size_alloc_threshold = 0;
++  int range_size_alloc_free_pct = 0;
++  uint64_t range_count_cap = 0;
++
++  void _range_size_tree_rm(range_seg_t& r) {
++    ceph_assert(num_free >= r.length());
++    num_free -= r.length();
++    range_size_tree.erase(r);
++  }
++  void _range_size_tree_try_insert(range_seg_t& r) {
++    if (_try_insert_range(r.start, r.end)) {
++      range_size_tree.insert(r);
++      num_free += r.length();
++    } else {
++      range_tree.erase_and_dispose(r, dispose_rs{});
++    }
++  }
++  bool _try_insert_range(uint64_t start, 
++			 uint64_t end,
++			 range_tree_t::iterator* insert_pos = nullptr) {
++    bool res = !range_count_cap || range_size_tree.size() < range_count_cap;
++    bool remove_lowest = false;
++    if (!res) {
++      if (end - start > _lowest_size_available()) {
++        remove_lowest = true;
++	res = true;
++      }
++    }
++    if (!res) {
++      _spillover_range(start, end);
++    } else {
++      if (insert_pos) {
++        auto new_rs = new range_seg_t{start, end};
++	range_tree.insert_before(*insert_pos, *new_rs);
++	range_size_tree.insert(*new_rs);
++	num_free += new_rs->length();
++      }
++      if (remove_lowest) {
++        auto r = range_size_tree.begin();
++	_range_size_tree_rm(*r);
++	_spillover_range(r->start, r->end);
++	range_tree.erase_and_dispose(*r, dispose_rs{});
++      }
++    }
++    return res;
++  }
++  virtual void _spillover_range(uint64_t start, uint64_t end) {
++    ceph_assert(false);
++  }
++
++protected:
++  virtual void _add_to_tree(uint64_t start, uint64_t size);
++
++protected:
++  CephContext* cct;
++  std::mutex lock;
++
++  double _get_fragmentation() const {
++    auto free_blocks = p2align(num_free, block_size) / block_size;
++    if (free_blocks <= 1) {
++      return .0;
++    }
++    return (static_cast<double>(range_tree.size() - 1) / (free_blocks - 1));
++  }
++  void _dump() const;
++
++  uint64_t _lowest_size_available() {
++    auto rs = range_size_tree.begin();
++    return rs != range_size_tree.end() ? rs->length() : 0;
++  }
++
++  int64_t _allocate(
++    uint64_t want,
++    uint64_t unit,
++    uint64_t max_alloc_size,
++    int64_t hint,
++    PExtentVector *extents);
++
++  void _release(const interval_set<uint64_t>& release_set);
++  void _release(const PExtentVector& release_set);
++  void _shutdown();
++
++  void _process_range_removal(uint64_t start, uint64_t end, range_tree_t::iterator& rs);
++  void _remove_from_tree(uint64_t start, uint64_t size);
++  void _try_remove_from_tree(uint64_t start, uint64_t size,
++    std::function<void(uint64_t offset, uint64_t length, bool found)> cb);
++
++  uint64_t _get_free() const {
++    return num_free;
++  }
++};
++
+diff -uprN ../ceph-14.2.8/src/os/bluestore/BitmapAllocator.h ./ceph-14.2.8/src/os/bluestore/BitmapAllocator.h
+--- ../ceph-14.2.8/src/os/bluestore/BitmapAllocator.h	2020-03-03 01:49:20.000000000 +0800
++++ ./ceph-14.2.8/src/os/bluestore/BitmapAllocator.h	2021-12-28 11:43:57.754054730 +0800
+@@ -30,6 +30,7 @@ public:
+   void release(
+     const interval_set<uint64_t>& release_set) override;
+ 
++  using Allocator::release;
+   uint64_t get_free() override
+   {
+     return get_available();
+@@ -37,7 +38,7 @@ public:
+ 
+   void dump() override;
+   void dump(std::function<void(uint64_t offset, uint64_t length)> notify) override;
+-  double get_fragmentation(uint64_t) override
++  double get_fragmentation()
+   {
+     return _get_fragmentation();
+   }
+diff -uprN ../ceph-14.2.8/src/os/bluestore/BitmapFreelistManager.cc ./ceph-14.2.8/src/os/bluestore/BitmapFreelistManager.cc
+--- ../ceph-14.2.8/src/os/bluestore/BitmapFreelistManager.cc	2020-03-03 01:49:20.000000000 +0800
++++ ./ceph-14.2.8/src/os/bluestore/BitmapFreelistManager.cc	2021-12-28 11:44:19.434054730 +0800
+@@ -111,7 +111,7 @@ int BitmapFreelistManager::expand(uint64
+ 
+   uint64_t blocks0 = size / bytes_per_block;
+   if (blocks0 / blocks_per_key * blocks_per_key != blocks0) {
+-    blocks0 = (blocks / blocks_per_key + 1) * blocks_per_key;
++    blocks0 = (blocks0 / blocks_per_key + 1) * blocks_per_key;
+     dout(10) << __func__ << " rounding blocks up from 0x" << std::hex << size
+ 	     << " to 0x" << (blocks0 * bytes_per_block)
+ 	     << " (0x" << blocks0 << " blocks)" << std::dec << dendl;
+@@ -310,6 +310,30 @@ bool BitmapFreelistManager::enumerate_ne
+       break;
+     }
+     string k = enumerate_p->key();
++    int flag = 0; 
++    while(k.length()==10)
++    {
++      enumerate_p->next();
++      enumerate_bl.clear();
++      if (!enumerate_p->valid()){
++        enumerate_offset += bytes_per_key;
++        enumerate_bl_pos = 0;
++        *offset = _get_offset(enumerate_offset, enumerate_bl_pos);
++        flag = 1;
++        break;
++      }
++      else{
++        k = enumerate_p->key();
++        if(k.length()==10)
++          continue;
++        else{
++          flag = 2;
++          break;
++        }
++      }
++    }
++    if(flag == 1)
++      break;
+     const char *p = k.c_str();
+     uint64_t next = enumerate_offset + bytes_per_key;
+     _key_decode_u64(p, &enumerate_offset);
+@@ -332,8 +356,7 @@ bool BitmapFreelistManager::enumerate_ne
+ 	end = _get_offset(enumerate_offset, enumerate_bl_pos);
+ 	dout(30) << __func__ << " found set bit, key 0x" << std::hex
+ 		 << enumerate_offset << " bit 0x" << enumerate_bl_pos
+-		 << " offset 0x" << end << std::dec
+-		 << dendl;
++		 << " offset 0x" << end << std::dec << dendl;
+ 	end = std::min(get_alloc_units() * bytes_per_block, end);
+ 	*length = end - *offset;
+         dout(10) << __func__ << std::hex << " 0x" << *offset << "~" << *length
+@@ -349,6 +372,29 @@ bool BitmapFreelistManager::enumerate_ne
+ 	break;
+       }
+       string k = enumerate_p->key();
++      int flag = 0;
++      while(k.length() == 10)
++      {
++        enumerate_p->next();
++        enumerate_bl.clear();
++        enumerate_bl_pos = 0;
++        if(!enumerate_p->valid()){
++          flag = 1;
++          break;
++        }
++        else{
++          k = enumerate_p->key();
++          if(k.length() == 10)
++            continue;
++          else{
++            flag = 2;
++            break;
++          }
++        }
++      }
++      if(flag == 1)
++        break;
++
+       const char *p = k.c_str();
+       _key_decode_u64(p, &enumerate_offset);
+       enumerate_bl = enumerate_p->value();
+@@ -598,3 +644,232 @@ void BitmapFreelistManager::_xor(
+     }
+   }
+ }
++
++void BitmapFreelistManager::onebit_xor(uint64_t offset, KeyValueDB::Transaction txn, uint64_t min_alloc_size){
++  std::lock_guard l(lock);
++  //1.prepare parameter
++  uint64_t chunk_size = min_alloc_size;
++  uint64_t chunk_num = blocks_per_key;
++  uint64_t base_offset = offset;
++
++  //2.locate the index of target offset
++  uint64_t base_number = base_offset / (chunk_num*chunk_size);
++  dout(30) << __func__ << " base_offset: " << base_offset << ", base_number: " << base_number << dendl;
++
++  //3.prepare key for index
++  uint64_t key_offset = base_number * chunk_num * chunk_size;
++  string k;
++  k.reserve(10);
++  _key_encode_u64_new(key_offset, &k);
++
++  //4.prepare value for db
++  bufferlist bl;
++  uint64_t bytes_per_kv = chunk_num >> 2;
++  bufferptr p(bytes_per_kv);
++  p.zero();
++
++  for(uint64_t i = 0; i < (bytes_per_kv/2); i++){
++    p[i] = bit_array_one[base_number][i];
++    p[i+16] = bit_array_two[base_number][i];
++  }
++  bl.append(p);
++
++  //5.write in db
++  txn->set(bitmap_prefix, k, bl);
++  dout(30) << __func__ << "=====onebit_xor finish.=====" << dendl;
++}
++
++int BitmapFreelistManager::onebit_bitmap_create(KeyValueDB *kvdb, uint64_t min_alloc_size){
++  std::lock_guard l(lock);
++  
++  //0.pre alloc space
++  uint64_t whole_block_size = size / min_alloc_size;
++  uint64_t index_size = whole_block_size / blocks_per_key;
++
++  bit_array_one.resize(index_size);
++  bit_array_two.resize(index_size);
++  for(uint64_t i = 0; i < index_size; i++){
++    bit_array_one[i] = "0000000000000000";
++    bit_array_two[i] = "0000000000000000";
++    for(int j = 0; j < 16; j++){
++      bit_array_one[i][j] &= 0x0;
++      bit_array_two[i][j] &= 0x0;
++    }
++  }
++  dout(30) << __func__ << " whole_block_size: " << whole_block_size << ", index_size: " << index_size << dendl;
++
++  //1.firstly, get the pointer of kvdb
++  enumerate_p = kvdb->get_iterator(bitmap_prefix);
++  enumerate_p->lower_bound(string());
++
++  //2.create new bitmap
++  while(enumerate_p->valid()){
++    string k = enumerate_p->key();
++    dout(30) << "key size: " << k.size() << ", k: " << k << dendl;
++
++    if(k.length() == 10){
++      //2.1 read and convert key
++      const char *p = k.c_str();
++      uint64_t my_offset;
++      p = _key_decode_u64_new(p, &my_offset);
++
++      //2.2 then get value according to key, and build as count_array in memory
++      enumerate_bl = enumerate_p->value();
++      const char* segment_p = enumerate_bl.c_str();
++      dout(30) << "enumerate_bl: " << enumerate_bl << ", enumerate_bl length: " << enumerate_bl.length() << dendl;
++      string segment_value = "00000000000000000000000000000000";
++      for(int i = 0; i < 32; i++){
++        segment_value[i] = segment_p[i];
++      }
++
++      uint64_t array_pos = my_offset / min_alloc_size / blocks_per_key;
++      bit_array_one[array_pos] = segment_value.substr(0,16);
++      bit_array_two[array_pos] = segment_value.substr(16);
++    }
++
++    //3.prepare for next kv
++    enumerate_p->next();
++    if(!enumerate_p->valid())
++      break;
++  }
++  return 0;
++}
++
++void BitmapFreelistManager::onebit_check_bitmap(const PExtentVector& extents, bool compressed, uint64_t min_alloc_size){
++  if(compressed){
++    dout(30) << __func__ << " extents.size: " << extents.size() << dendl;
++
++    for(auto e:extents){
++      dout(30) << __func__ << " offset: " << e.offset << " length: " << e.length << dendl;
++
++      //1.first align offset and length
++     uint64_t chunk_size = min_alloc_size;
++     uint64_t new_start = p2align(e.offset, chunk_size);
++     uint64_t new_end = p2align(e.offset + e.length-1, chunk_size);
++     dout(30) << __func__ << "After p2align, offset: " << new_start << ", end(offset+length): " << new_end << dendl;
++
++     //2.check after align
++     if(new_start == new_end){
++       uint64_t pos_index = new_start / chunk_size;
++       if(pos_index < count_number.size()){
++         dout(30) << __func__ << "1.num before check: " << int(count_number[pos_index]) << dendl;
++         count_number[pos_index]--;
++       }
++       else{
++         dout(30) << __func__ << "offset is not reused." << dendl;
++         return;
++       }
++     }
++     else{
++       uint64_t temp_offset = new_start;
++       while(temp_offset <= new_end){
++         uint64_t pos_index = temp_offset / chunk_size;
++         if(pos_index < count_number.size()){
++           dout(30) << __func__ << "2.num before check: " << int(count_number[pos_index]) << ", offset: " << temp_offset << dendl;
++           count_number[pos_index]--;
++           temp_offset += chunk_size;
++         }
++         else{
++           break;
++         }
++       }
++     }
++    }
++  }
++}
++
++void BitmapFreelistManager::convert_num(){
++  uint64_t index_count = bit_array_one.size();
++  for (uint64_t i = 0; i < index_count; i++) {
++    for (int j = 0; j < 16; j++) {
++      for(unsigned int k = 0; k < 8; k++) {
++        unsigned int state_one = (0x1) & (bit_array_one[i][j] >> k);
++        unsigned int state_two = (0x1) & (bit_array_two[i][j] >> k);
++        int8_t result = static_cast<int8_t>((state_one != 0)) + 2 * static_cast<uint8_t>((state_two != 0));
++        count_number.push_back(result);
++      }
++    }
++  }
++  dout(30) << __func__ << " count array has already be created. number: " << count_number.size() << dendl;
++}
++
++int64_t BitmapFreelistManager::reuse_count(){
++  return ReuseCountClose(count_number);
++}
++
++void BitmapFreelistManager::plus_function(uint64_t offset, uint64_t min_alloc_size){
++  std::lock_guard l(lock);
++  if (min_alloc_size == 0 || blocks_per_key == 0) {
++    derr << __func__ << "unrecognized min_alloc_size or blocks_per_key " << dendl;
++  }
++
++  uint64_t chunk_index = offset / min_alloc_size /blocks_per_key;
++  uint64_t chunk_index_detail = ((offset / min_alloc_size) % blocks_per_key) / 8;
++  uint64_t chunk_index_detail_internal = ((offset / min_alloc_size) % blocks_per_key) % 8;
++  uint64_t index_offset = chunk_index_detail_internal;
++
++  unsigned int state_one = (0x01) & (bit_array_one[chunk_index][chunk_index_detail] >> index_offset);
++  unsigned int state_two = (0x01) & (bit_array_two[chunk_index][chunk_index_detail] >> index_offset);
++
++  if ((state_one == 0) && (state_two == 0)) {
++    bit_array_one[chunk_index][chunk_index_detail] |= (1 << index_offset);
++  } else if ((state_one != 0) && (state_two == 0)) {
++    bit_array_one[chunk_index][chunk_index_detail] &= ~(1 << index_offset);
++    bit_array_two[chunk_index][chunk_index_detail] |= (1 << index_offset);
++  } else if ((state_one == 0) && (state_two != 0)) {
++    bit_array_one[chunk_index][chunk_index_detail] |= (1 << index_offset);
++  } else {
++    derr << __func__ << " something wrong happened: state_one or state_two in wrong station " << dendl;
++  }
++
++  state_one = (0x01) & (bit_array_one[chunk_index][chunk_index_detail] >> index_offset);
++  state_two = (0x01) & (bit_array_two[chunk_index][chunk_index_detail] >> index_offset);
++}
++
++void BitmapFreelistManager::minus_function(uint64_t offset, uint64_t min_alloc_size){
++  std::lock_guard l(lock);
++  if (min_alloc_size == 0 || blocks_per_key == 0) {
++    derr << __func__ << " unrecognized min_alloc_size or blocks_per_key " << dendl; 
++  }
++
++  uint64_t chunk_index = offset / min_alloc_size /blocks_per_key;
++  uint64_t chunk_index_detail = ((offset / min_alloc_size) % blocks_per_key) / 8;
++  uint64_t chunk_index_detail_internal = ((offset / min_alloc_size) % blocks_per_key) % 8;
++  uint64_t index_offset = chunk_index_detail_internal;
++
++  unsigned int state_one = (0x01) & (bit_array_one[chunk_index][chunk_index_detail] >> index_offset);
++  unsigned int state_two = (0x01) & (bit_array_two[chunk_index][chunk_index_detail] >> index_offset);
++
++  if ((state_one != 0 ) && (state_two == 0)) {
++    bit_array_one[chunk_index][chunk_index_detail] &= ~(1 << index_offset);
++  } else if ((state_one == 0) && (state_two != 0)) {
++    bit_array_one[chunk_index][chunk_index_detail] |= (1 << index_offset);
++    bit_array_two[chunk_index][chunk_index_detail] &= ~(1 << index_offset);
++  } else if ((state_one != 0) && (state_two != 0)) {
++    bit_array_one[chunk_index][chunk_index_detail] &= ~(1 << index_offset);
++  } else {
++    derr << __func__ << " something wrong happened: state_one or state_two in wrong station " << dendl;
++  }
++
++  state_one = (0x01) & (bit_array_one[chunk_index][chunk_index_detail] >> index_offset);
++  state_two = (0x01) & (bit_array_two[chunk_index][chunk_index_detail] >> index_offset);
++}
++
++int BitmapFreelistManager::zero_check_function(uint64_t offset, uint64_t min_alloc_size){
++  if (min_alloc_size == 0 || blocks_per_key == 0) {
++    derr << __func__ << " unrecognized min_alloc_size or blocks_per_key " << dendl;  
++  }
++  uint64_t chunk_index = offset / min_alloc_size / blocks_per_key;
++  uint64_t chunk_index_detail = ((offset / min_alloc_size) % blocks_per_key) / 8;
++  uint64_t chunk_index_detail_internal = ((offset / min_alloc_size) % blocks_per_key) % 8;
++  uint64_t index_offset = chunk_index_detail_internal;
++
++  unsigned int state_one = (0x01) & (bit_array_one[chunk_index][chunk_index_detail] >> index_offset);
++  unsigned int state_two = (0x01) & (bit_array_two[chunk_index][chunk_index_detail] >> index_offset);
++
++  if ((state_one == 0)&& (state_two == 0)) {
++    return 0;
++  } else {
++    return 1;
++  }
++}
+diff -uprN ../ceph-14.2.8/src/os/bluestore/BitmapFreelistManager.h ./ceph-14.2.8/src/os/bluestore/BitmapFreelistManager.h
+--- ../ceph-14.2.8/src/os/bluestore/BitmapFreelistManager.h	2020-03-03 01:49:20.000000000 +0800
++++ ./ceph-14.2.8/src/os/bluestore/BitmapFreelistManager.h	2021-12-28 11:45:06.444054730 +0800
+@@ -5,6 +5,7 @@
+ #define CEPH_OS_BLUESTORE_BITMAPFREELISTMANAGER_H
+ 
+ #include "FreelistManager.h"
++#include "kps_compaction.h"
+ 
+ #include <string>
+ #include <mutex>
+@@ -13,6 +14,7 @@
+ #include "include/buffer.h"
+ #include "kv/KeyValueDB.h"
+ 
++
+ class BitmapFreelistManager : public FreelistManager {
+   std::string meta_prefix, bitmap_prefix;
+   std::shared_ptr<KeyValueDB::MergeOperator> merge_op;
+@@ -83,6 +85,14 @@ public:
+     return bytes_per_block;
+   }
+ 
++  void onebit_xor(uint64_t offset, KeyValueDB::Transaction txn, uint64_t min_alloc_size) override;
++  int onebit_bitmap_create(KeyValueDB *kvdb, uint64_t min_alloc_size) override;
++  void onebit_check_bitmap(const PExtentVector& extents, bool compressed, uint64_t min_alloc_size) override;
++  void convert_num() override;
++  int64_t reuse_count() override;
++  void plus_function(uint64_t offset, uint64_t min_alloc_size) override;
++  void minus_function(uint64_t offset, uint64_t min_alloc_size) override;
++  int zero_check_function(uint64_t offset, uint64_t min_alloc_size) override;
+ };
+ 
+ #endif
+diff -uprN ../ceph-14.2.8/src/os/bluestore/BlueStore.cc ./ceph-14.2.8/src/os/bluestore/BlueStore.cc
+--- ../ceph-14.2.8/src/os/bluestore/BlueStore.cc	2020-03-03 01:49:20.000000000 +0800
++++ ./ceph-14.2.8/src/os/bluestore/BlueStore.cc	2021-12-28 14:57:54.334054730 +0800
+@@ -4071,14 +4071,23 @@ void BlueStore::_set_compression()
+ 
+   compressor = nullptr;
+ 
+-  if (cct->_conf->bluestore_compression_min_blob_size) {
+-    comp_min_blob_size = cct->_conf->bluestore_compression_min_blob_size;
+-  } else {
++  if (cct->_conf->compaction_opt_space_enabled) { // for compaction
+     ceph_assert(bdev);
+     if (bdev->is_rotational()) {
+-      comp_min_blob_size = cct->_conf->bluestore_compression_min_blob_size_hdd;
++      comp_min_blob_size = cct->_conf->bluestore_compaction_min_blob_size_hdd;
++    } else {
++      comp_min_blob_size = cct->_conf->bluestore_compaction_min_blob_size_ssd;
++    }
++  } else {
++    if (cct->_conf->bluestore_compression_min_blob_size) {
++      comp_min_blob_size = cct->_conf->bluestore_compression_min_blob_size;
+     } else {
+-      comp_min_blob_size = cct->_conf->bluestore_compression_min_blob_size_ssd;
++      ceph_assert(bdev);
++      if (bdev->is_rotational()) {
++        comp_min_blob_size = cct->_conf->bluestore_compression_min_blob_size_hdd;
++      } else {
++        comp_min_blob_size = cct->_conf->bluestore_compression_min_blob_size_ssd;
++      }
+     }
+   }
+ 
+@@ -4836,6 +4845,12 @@ int BlueStore::_open_alloc()
+     ++num;
+     bytes += length;
+   }
++  
++  int my_flag = fm->onebit_bitmap_create(db, min_alloc_size);
++  if (my_flag != 0) {
++    ceph_assert(0);
++  }
++
+   fm->enumerate_reset();
+   dout(1) << __func__ << " loaded " << byte_u_t(bytes)
+ 	  << " in " << num << " extents"
+@@ -6031,16 +6046,26 @@ int BlueStore::mkfs()
+     goto out_close_fsid;
+ 
+   // choose min_alloc_size
+-  if (cct->_conf->bluestore_min_alloc_size) {
+-    min_alloc_size = cct->_conf->bluestore_min_alloc_size;
+-  } else {
++  if(cct->_conf->compaction_opt_space_enabled) {
+     ceph_assert(bdev);
+     if (bdev->is_rotational()) {
+-      min_alloc_size = cct->_conf->bluestore_min_alloc_size_hdd;
++      min_alloc_size = cct->_conf->bluestore_compaction_min_alloc_size_hdd;
++    } else {
++      min_alloc_size = cct->_conf->bluestore_compaction_min_alloc_size_ssd;
++    }
++  } else {
++    if (cct->_conf->bluestore_min_alloc_size) {
++      min_alloc_size = cct->_conf->bluestore_min_alloc_size;
+     } else {
+-      min_alloc_size = cct->_conf->bluestore_min_alloc_size_ssd;
++      ceph_assert(bdev);
++      if (bdev->is_rotational()) {
++        min_alloc_size = cct->_conf->bluestore_min_alloc_size_hdd;
++      } else {
++        min_alloc_size = cct->_conf->bluestore_min_alloc_size_ssd;
++      }
+     }
+   }
++
+   _validate_bdev();
+ 
+   // make sure min_alloc_size is power of 2 aligned.
+@@ -6786,7 +6811,8 @@ int BlueStore::_fsck_check_extents(
+         e.offset, e.length, granularity, used_blocks,
+         [&](uint64_t pos, mempool_dynamic_bitset &bs) {
+ 	  ceph_assert(pos < bs.size());
+-	  if (bs.test(pos)) {
++    bool compaction_bs_check = false;
++    if (bs.test(pos) && compaction_bs_check) {
+ 	    if (repairer) {
+ 	      repairer->note_misreference(
+ 	        pos * min_alloc_size, min_alloc_size, !already);
+@@ -6812,6 +6838,7 @@ int BlueStore::_fsck_check_extents(
+       }
+     }
+   }
++  fm->onebit_check_bitmap(extents, compressed, min_alloc_size);
+   return errors;
+ }
+ 
+@@ -7402,6 +7429,9 @@ void BlueStore::_fsck_check_objects(FSCK
+     CollectionRef c;
+     int64_t pool_id = -1;
+     spg_t pgid;
++  
++    fm->convert_num();
++
+     for (it->lower_bound(string()); it->valid(); it->next()) {
+       dout(30) << __func__ << " key "
+         << pretty_binary_string(it->key()) << dendl;
+@@ -9157,21 +9187,55 @@ int BlueStore::_do_read(
+       }
+       compressed_blob_bls.push_back(bufferlist());
+       bufferlist& bl = compressed_blob_bls.back();
+-      r = bptr->get_blob().map(
+-	0, bptr->get_blob().get_ondisk_length(),
+-	[&](uint64_t offset, uint64_t length) {
+-	  int r;
+-	  // use aio if there are more regions to read than those in this blob
+-	  if (num_regions > r2r.size()) {
+-	    r = bdev->aio_read(offset, length, &bl, &ioc);
+-	  } else {
+-	    r = bdev->read(offset, length, &bl, &ioc, false);
+-	  }
+-	  if (r < 0)
++
++      bufferlist temp_bl;
++      TagReadUsage read_param;
++      read_param.isAio = (num_regions > r2r.size());
++
++      CompactionReadInit(bptr->get_blob().get_ondisk_length(),
++                            bptr->get_blob().find_extents_offset(),
++                            bptr->get_blob().get_chunk_size(block_size),
++                            bptr->get_blob().analyze_allocate_contiguous(),
++                            read_param);
++
++      CompactionReadRegion(read_param.pextentOffset,
++                              read_param.pextentLength,
++                              read_param.blobReadLength,
++                              read_param.chunkSize,
++                              bptr->get_blob().is_compressed());
++      
++      r = bptr->get_blob().map_compaction_read(
++          0, read_param.blobReadLength, read_param.chunkSize, read_param.isSplit, read_param.isContinuous,
++          [&](uint64_t offset, uint64_t length, uint64_t plength=0) {
++          int r;
++          // use aio if there are more regions to read than those in this blob
++          if (num_regions > r2r.size() && read_param.isContinuous) {
++            r = bdev->aio_read(offset, length, &temp_bl, &ioc);
++            if (!read_param.isSplit) {
++              temp_bl.splice(read_param.pextentOffset % read_param.chunkSize,
++                            bptr->get_blob().get_ondisk_length(), &bl);
++            }
++          } else if (!read_param.isContinuous) {
++            temp_bl.clear();
++            ceph_assert(temp_bl.length() == 0);
++            r = bdev->read(offset, length, &temp_bl, &ioc, false);
++            temp_bl.splice(read_param.pextentOffset % read_param.chunkSize, plength, &bl);
++          } else {
++            r = bdev->read(offset, length, &temp_bl, &ioc, false);
++            temp_bl.splice(read_param.pextentOffset % read_param.chunkSize,
++                         bptr->get_blob().get_ondisk_length(), &bl);
++          }
++          if (r < 0)
+             return r;
+           return 0;
+-	});
+-      if (r < 0) {
++          });
++
++      if (read_param.isAio && read_param.isSplit) {
++        temp_bl.splice(read_param.pextentOffset % read_param.chunkSize, bptr->get_blob().get_ondisk_length(), &bl);
++        ceph_assert(bptr->get_blob().get_ondisk_length() == bl.length());
++      }
++
++     if (r < 0) {
+         derr << __func__ << " bdev-read failed: " << cpp_strerror(r) << dendl;
+         if (r == -EIO) {
+           // propagate EIO to caller
+@@ -10321,6 +10385,10 @@ void BlueStore::_txc_state_proc(TransCon
+     switch (txc->state) {
+     case TransContext::STATE_PREPARE:
+       txc->log_state_latency(logger, l_bluestore_state_prepare_lat);
++      // compaction process
++      if (txc->compaction_txn) {
++        _compaction_queue(txc);
++      }
+       if (txc->ioc.has_pending_aios()) {
+ 	txc->state = TransContext::STATE_AIO_WAIT;
+ 	txc->had_ios = true;
+@@ -11444,6 +11512,360 @@ int BlueStore::_deferred_replay()
+   return r;
+ }
+ 
++void BlueStore::_compaction_batch_padding(
++                                          TransContext *txc,
++                                          WriteContext *wctx,
++                                          uint64_t *need,
++                                          uint64_t *need_compaction,
++                                          uint64_t chunk_size)
++{
++  int wi_size = wctx->writes.size();
++  dout(20) << __func__ << " total blob number: 0x" << std::hex << wi_size
++    << " need value before padding: 0x" << std::hex << *need_compaction << dendl;
++  uint64_t need_align = p2roundup(*need_compaction, chunk_size);
++  uint64_t batch_padding_length = need_align - *need_compaction;
++  while ((wi_size-1) >= 0 ){
++       dout(20) << __func__ << " padding blob's length: 0x" << std::hex
++         << wctx->writes[wi_size-1].blob_length << dendl;
++       if (wctx->writes[wi_size-1].compressed){
++       dout(20) << __func__ << " length need to padding: 0x" << std::hex << batch_padding_length << dendl;
++       if (batch_padding_length >
++           (wctx->writes[wi_size-1].blob_length - wctx ->writes[wi_size-1].compressed_bl.length())){
++       batch_padding_length -= wctx->writes[wi_size-1].blob_length
++         - wctx->writes[wi_size-1].compressed_bl.length();
++       txc->statfs_delta.compressed_allocated() += wctx->writes[wi_size-1].blob_length
++         - wctx->writes[wi_size-1].compressed_bl.length();
++       *need_compaction += wctx->writes[wi_size-1].blob_length
++         -wctx->writes[wi_size-1].compressed_bl.length();
++       wctx->writes[wi_size-1].compressed_bl.append_zero(wctx->writes[wi_size-1].blob_length
++         -wctx->writes[wi_size-1].compressed_bl.length());
++       dout(20) << __func__ << " padding blob number(start from 1 to wi_size): 0x" << std::hex
++         << wi_size << dendl;
++       }else {
++          txc->statfs_delta.compressed_allocated() += batch_padding_length;
++          wctx->writes[wi_size-1].compressed_bl.append_zero(batch_padding_length);
++          *need_compaction += batch_padding_length;
++          *need = *need_compaction;
++          dout(20) << __func__ << " padding blob number(start from 1 to wi_size): 0x" << std::hex << wi_size
++            << " need after padding: 0x" << std::hex << *need << dendl;
++          break;
++       }
++     }
++     wi_size--;  
++  }
++  return;
++}
++
++void BlueStore::_compaction_block_usage(
++            TransContext *txc,
++            OnodeRef o,
++            bluestore_pextent_t p)
++{
++   TagBlockUsage param;
++   map<uint64_t, int8_t>::iterator iter;
++   CompactionBlockUsageInit(p.offset, p.length, min_alloc_size, param);
++
++   while (param.currentOffset <param.endPos && param.leftLength >0){
++      param.baseOffset = p2align(param.currentOffset, min_alloc_size);
++      iter = o->onode.chunk_map.find(param.baseOffset);
++      if (iter != o->onode.chunk_map.end()){
++          iter->second++;
++          dout(10) << __func__ << " p.offset: 0x" << std::hex << p.offset
++            << " p.length: 0x" << std::hex <<p.length
++            << " base_offset: 0x" << std::hex << param.baseOffset
++            << " add iter->second: " << std::dec << (int)iter->second << dendl;
++      }else {
++         o->onode.chunk_map.insert(pair<uint64_t, int8_t>(param.baseOffset, 1));
++         iter = o->onode.chunk_map.find(param.baseOffset);
++         ceph_assert(iter != o->onode.chunk_map.end());
++         dout(10) << __func__ << "p.offset: 0x" << std::hex << p.offset
++           << " p.length: 0x" << std::hex << p.length
++           << " base_offset: 0x" << std::hex << param.baseOffset
++           << " insert iter->second: " << std::dec << (int)iter->second << dendl;
++      }
++      CompactionBlockUsageInternal(min_alloc_size, p.offset, param);
++      dout(10) << __func__ << " left_length: 0x" << std::hex << param.leftLength << dendl;
++   }
++}
++
++void BlueStore::_choose_compaction_write_pattern(
++       TransContext *txc,
++       OnodeRef o,
++       BlobRef b,
++       bufferlist& l,
++       uint64_t b_off,
++       bool is_deferred)
++{
++    if (is_deferred){
++        dout(20) << __func__ << "compaction length 0x" << std::hex
++          << l.length() << std::dec << "compaction mode: deferred write" <<dendl;
++        bluestore_deferred_op_t *op = _get_deferred_op(txc, o);
++        op->op = bluestore_deferred_op_t::OP_WRITE;
++        int cpr = b->get_blob().map_compaction_write(
++                 b_off, l.length(),
++                 [&](uint64_t compaction_off, uint64_t compaction_len){
++                 op->extents.emplace_back(bluestore_pextent_t(compaction_off, compaction_len));
++                 dout(20) << __func__ << " compaction offset value: 0x" << std::hex << compaction_off
++                 << " compaction length value: 0x" << std::hex << compaction_len << dendl;
++                 return 0;
++                 });
++        ceph_assert(cpr == 0);
++        op->data = l;
++        logger->inc(l_bluestore_write_small_deferred);
++    }else{
++    dout(20) << __func__ << " compaction length: 0x" << std::hex
++      << l.length() << std::dec << " compaction mode: simple write" << dendl;
++    compaction_op *op = _get_compaction_op(txc, o);
++    op->pattern = compaction_op::OP_COMPACTION;
++    int cpr = b->get_blob().map_compaction_write(
++                b_off, l.length(),
++                [&](uint64_t compaction_off, uint64_t compaction_len){
++                op->unaligned_extents.emplace_back(bluestore_pextent_t(compaction_off, compaction_len));
++                dout(20) << __func__ << " compaction offset value: 0x" << std::hex << compaction_off
++                << " compaction length value: 0x" << std::hex << compaction_len << dendl;
++                return 0;
++                });
++    ceph_assert(cpr == 0);
++    op->compaction_data = l;
++    logger->inc(l_bluestore_write_small_new);
++    }
++}
++
++void BlueStore::_compaction_queue(TransContext *txc)
++{
++  dout(20) << __func__ << " txc " << txc << " osr " << txc->osr <<dendl;
++  compaction_lock.lock();
++  if (!txc->osr -> compaction_pending){
++     dout(10) << __func__ << " !txc->osr->compaction_pending " << dendl;
++     txc->osr->compaction_pending = new CompactionBatch(cct, txc->osr.get());
++  }
++  ++compaction_queue_size;
++  compaction_transaction& wt = *txc->compaction_txn;
++  for (auto opi = wt.ops.begin(); opi != wt.ops.end(); ++opi){
++     const auto& op = *opi;
++     ceph_assert(op.pattern == compaction_op::OP_COMPACTION);
++     bufferlist::const_iterator p = op.compaction_data.begin();
++     for (auto e : op.unaligned_extents){
++     txc ->osr->compaction_pending->write_queue(cct, wt.seq, e.offset, e.length, p);
++     }
++  }
++  if (!txc->osr->compaction_running) {
++     dout(10) << __func__ << " check compaction switch: " << txc->is_compaction << dendl;
++     _compaction_submit_batch(txc, txc->osr.get());
++  }
++}
++
++void BlueStore::_compaction_submit_batch(
++                 TransContext *txc,
++                 OpSequencer *osr)
++{
++    uint64_t compaction_batch_begin = 0, compaction_block_off = 0;
++    bufferlist bl_batch;
++
++    auto cbh_p = osr->compaction_pending;
++    compaction_queue_size -= cbh_p->seq_bytes.size();
++    ceph_assert(compaction_queue_size >= 0);
++
++    osr->compaction_running = osr->compaction_pending;
++    osr->compaction_pending = nullptr;
++
++    compaction_lock.unlock();
++    auto compaction_io = cbh_p->iomap.begin();
++    for (;;) {
++      if (compaction_io == cbh_p->iomap.end() || compaction_io->first != compaction_block_off){
++         if (bl_batch.length()){
++            dout(20) << __func__ << " write 0x " << std::hex
++              << compaction_batch_begin << "~" << bl_batch.length()
++              << " crc " << bl_batch.crc32c(-1) << std::dec << dendl;
++            int cpr = bdev ->aio_write(compaction_batch_begin, bl_batch, &txc->ioc, false);
++            dout(20) << __func__ << " double queue aio_write: 0x " << std::hex <<cpr <<dendl;
++            ceph_assert(cpr == 0);
++         }
++         if (compaction_io == cbh_p->iomap.end()){
++           break;
++         }
++         compaction_batch_begin = 0;
++         compaction_block_off = compaction_io->first;
++         bl_batch.clear();
++      }
++      dout(20) << __func__ << " compaction_io seq: 0x" << std::hex << compaction_io->second.seq << " 0x "
++        << std::hex << compaction_block_off << "~" << compaction_io->second.bl.length() << std::dec
++        <<dendl;
++      dout(20) << __func__ << " compaction_io offset for each compress block: 0x"
++        << std::hex << compaction_block_off <<dendl;
++      dout(20) << __func__ << " compaction_io length for each compress block: 0x"
++        << std::hex << compaction_io->second.bl.length() << dendl;
++      if (!bl_batch.length()){
++        compaction_batch_begin = compaction_block_off;
++      }
++      compaction_block_off += compaction_io->second.bl.length();
++      bl_batch.claim_append(compaction_io->second.bl);
++      ++compaction_io;
++    }
++    _compaction_aio_finish(txc->osr.get());
++}
++
++void BlueStore::_compaction_aio_finish(OpSequencer *osr)
++{
++    dout(10) << __func__ << " osr " << osr << dendl;
++    ceph_assert(osr->compaction_running);
++    CompactionBatch *cbh_r = osr->compaction_running;
++    std::lock_guard l(compaction_lock);
++    ceph_assert(osr->compaction_running == cbh_r);
++    osr->compaction_running = nullptr;
++    delete cbh_r;
++}
++
++BlueStore::compaction_op *BlueStore::_get_compaction_op(
++                   TransContext *txc,
++                   OnodeRef o)                                    
++{
++     if (!txc->compaction_txn){
++        txc->compaction_txn = new compaction_transaction;
++     }
++     txc->compaction_txn->ops.push_back(compaction_op());
++     return &txc->compaction_txn->ops.back();
++}
++
++void BlueStore::_compaction_block_release(
++               TransContext *txc,
++               OnodeRef o,
++               bluestore_pextent_t e,
++               uint64_t min_alloc_size)
++{
++  TagBlockRelease release_param;
++  map < uint64_t, int8_t >::iterator iter;
++  CompactionBlockReleaseInit(min_alloc_size, e.offset, e.length, release_param);
++
++  while(release_param.currentPos < release_param.endPos && release_param.leftLength > 0) {
++       release_param.baseOffset = p2align(release_param.currentPos, release_param.chunkSize);
++       iter = o->onode.chunk_map.find(release_param.baseOffset);
++       dout(20) << __func__ << " iter->second: " << std::dec << (int)iter->second << dendl;
++       iter->second--;
++       ceph_assert(iter != o->onode.chunk_map.end());
++       ceph_assert(iter->second >= 0);
++       if (iter->second == 0){
++          release_param.releaseOffset = release_param.baseOffset;
++          dout(20) << __func__ << "  release successful, current chunk is empty. "
++            << " e.offset: 0x" << std::hex << e.offset << " e.length: 0x" << std::hex << e.length
++            << " release_offset: 0x" << std::hex << release_param.releaseOffset
++            << " release_length: 0x" << std::hex << release_param.chunkSize << dendl;
++          txc->released.insert(release_param.releaseOffset, release_param.chunkSize);
++          o->onode.chunk_map.erase(release_param.releaseOffset);//delete release_offset from chunk_map
++          // for debug
++          ceph_assert((o->onode.chunk_map.find(release_param.baseOffset)) == (o->onode.chunk_map.end()));
++          dout(20) << __func__ << " There is no information about offset: 0x" << std::hex << release_param.releaseOffset
++            << " in chunk_map. " << dendl;
++       } else {
++          dout(20) << __func__ << " release failed, " << std::dec << (int) iter->second
++            << " compressed block(s) still exist in current chunk. " << " e.offset: 0x"
++            << std::hex << e.offset << " e.length: 0x" << std::hex << e.length <<dendl;
++       }
++       CompactionBlockReleaseInternal(e.offset, release_param);
++       dout(20) << __func__ << " left_length: 0x"
++         << std::hex << release_param.leftLength << " , " << release_param.currentPos << dendl;
++       // Space that needs to be released but cannot be identified by the system (4K granularity).
++       txc->statfs_delta.allocated() -= release_param.forwardStep;
++       txc->statfs_delta.compressed_allocated() -= release_param.forwardStep;
++  }
++  ceph_assert(release_param.leftLength == 0);
++}
++
++// CompactionBatch
++#undef dout_prefix
++#define dout_prefix *_dout << "bluestore.CompactionBatch(" << this << ") "
++
++void BlueStore::CompactionBatch::write_queue(
++              CephContext *cct,
++              uint64_t seq,
++              uint64_t offset,
++              uint64_t length,
++              bufferlist::const_iterator& bl_batch)
++{
++   _relocate(cct, offset, length);
++   auto i = iomap.insert(make_pair(offset, compaction_io()));
++   ceph_assert(i.second);
++   i.first->second.seq = seq;
++   bl_batch.copy(length, i.first->second.bl);
++   dout(20) << __func__ << " seq " << seq
++      << " 0x " << std::hex << offset << "~" << length
++      << " crc " << i.first->second.bl.crc32c(-1)
++      << std::dec <<dendl; 
++      seq_bytes[seq] += length;
++}
++
++void BlueStore::CompactionBatch::_relocate(
++               CephContext *cct,
++               uint64_t offset,
++               uint64_t length)
++{
++   generic_dout(20) << __func__ << " 0x " << std::hex << offset << "~" << length
++     << std::dec << dendl;
++   auto p = iomap.lower_bound(offset);
++   if (p!= iomap.begin()){
++      --p;
++      auto end = p->first + p ->second.bl.length();
++      if (end > offset) {
++         bufferlist head;
++         head.substr_of(p->second.bl, 0, offset - p->first);
++         dout(20) << __func__ << " keep head " << p->second.seq
++           << " 0x " << std::hex << p->first << "~" << p->second.bl.length()
++           << " -> 0x " << head.length() << std::dec << dendl;
++         auto i = seq_bytes.find(p->second.seq);
++         ceph_assert(i != seq_bytes.end());
++         if (end > offset + length ){
++             bufferlist tail;
++             tail.substr_of(p->second.bl, offset + length -p->first,
++                            end - (offset + length));
++             dout(20) << __func__ << " keep tail " << p->second.seq
++               << " 0x " << std::hex << p->first << "~" << p->second.bl.length()
++               << " -> 0x " << tail.length() << std::dec << dendl;
++             auto &n = iomap[offset + length];
++             n.bl.swap(tail);
++             n.seq = p->second.seq;
++             i->second -= length;
++         }
++         else {
++           i->second -= end -offset;
++         }
++         ceph_assert(i->second >= 0);
++         p->second.bl.swap(head);
++      }
++      ++p;
++   }
++   while (p != iomap.end()){
++       if(p->first >= offset +length){
++       break;
++       }
++       auto i = seq_bytes.find(p->second.seq);
++       ceph_assert(i != seq_bytes.end());
++       auto end = p->first + p->second.bl.length();
++       if (end > offset +length){
++           unsigned drop_front = offset +length - p->first;
++           unsigned keep_tail = end - (offset +length);
++           dout(20) << __func__ << " truncate front " << p->second.seq
++             << " 0x " << std::hex << p->first << "~" << p->second.bl.length()
++             << " drop_front 0x " << drop_front << " keep_tail 0x " << keep_tail
++             << " to 0x " << (offset +length) << "~" << keep_tail
++             << std::dec << dendl;
++           auto &s =iomap[offset +length];
++           s.seq = p->second.seq;
++           s.bl.substr_of(p->second.bl, drop_front, keep_tail);
++           i->second -= drop_front;
++       }
++       else {
++           dout(20) << __func__ << " drop " << p->second.seq
++             << " 0x " << std::hex << p->first << "~" << p->second.bl.length()
++             << std::dec << dendl;
++           i->second -= p->second.bl.length();
++       }
++       ceph_assert(i->second >= 0);
++       p = iomap.erase(p);
++   }
++}
++
++#undef dout_prefix
++#define dout_prefix *_dout << "bluestore(" << path << ")" 
+ // ---------------------------
+ // transactions
+ 
+@@ -12508,9 +12930,29 @@ int BlueStore::_do_alloc_write(
+ 
+   // compress (as needed) and calc needed space
+   uint64_t need = 0;
++  uint64_t need_compaction = 0;
+   auto max_bsize = std::max(wctx->target_blob_size, min_alloc_size);
++  bool global_compaction_flag = false;
++  bool compaction_enable = cct->_conf->compaction_enabled;
++  if (c && compaction_enable) {
++    for (auto& wi : wctx->writes) {
++      BlobRef b_com = wi.b;
++      bluestore_blob_t& dblob_com = b_com->dirty_blob();
++
++      if (wi.blob_length > min_alloc_size) {
++        global_compaction_flag = true;
++      } else if (dblob_com.is_partial_allocation() || !(wi.b_off == 0) || !(wi.blob_length == wi.bl.length())) {
++        global_compaction_flag = false;
++        break;
++      } else {
++        global_compaction_flag = false;
++        break;
++      }
++    }
++  }
++
+   for (auto& wi : wctx->writes) {
+-    if (c && wi.blob_length > min_alloc_size) {
++      if (c && wi.blob_length > min_alloc_size || global_compaction_flag) {
+       auto start = mono_clock::now();
+ 
+       // compress
+@@ -12527,7 +12969,9 @@ int BlueStore::_do_alloc_write(
+       // do an approximate (fast) estimation for resulting blob size
+       // that doesn't take header overhead  into account
+       uint64_t result_len = p2roundup(compressed_len, min_alloc_size);
+-      if (r == 0 && result_len <= want_len && result_len < wi.blob_length) {
++      if ((r == 0 && result_len <= want_len && result_len < wi.blob_length) || global_compaction_flag) {
++  wi.compacted = global_compaction_flag; // master switch for compaction
++  wi.compaction_deferred = cct->_conf->compaction_deferred_write;
+ 	bluestore_compression_header_t chdr;
+ 	chdr.type = c->get_type();
+ 	chdr.length = t.length();
+@@ -12536,22 +12980,31 @@ int BlueStore::_do_alloc_write(
+ 
+ 	compressed_len = wi.compressed_bl.length();
+ 	result_len = p2roundup(compressed_len, min_alloc_size);
+-	if (result_len <= want_len && result_len < wi.blob_length) {
++	if (result_len <= want_len && result_len < wi.blob_length || global_compaction_flag) {
+ 	  // Cool. We compressed at least as much as we were hoping to.
+ 	  // pad out to min_alloc_size
+-	  wi.compressed_bl.append_zero(result_len - compressed_len);
+-	  wi.compressed_len = compressed_len;
++    if (!global_compaction_flag) {
++      wi.compressed_bl.append_zero(result_len - compressed_len);
++      logger->inc(l_bluestore_write_pad_bytes, result_len - compressed_len);
++    }
++
++    wi.compressed_len = compressed_len;
+ 	  wi.compressed = true;
+-	  logger->inc(l_bluestore_write_pad_bytes, result_len - compressed_len);
+-	  dout(20) << __func__ << std::hex << "  compressed 0x" << wi.blob_length
++	 
++    dout(20) << __func__ << std::hex << "  compressed 0x" << wi.blob_length
+ 		   << " -> 0x" << compressed_len << " => 0x" << result_len
+ 		   << " with " << c->get_type()
+ 		   << std::dec << dendl;
+ 	  txc->statfs_delta.compressed() += compressed_len;
+ 	  txc->statfs_delta.compressed_original() += wi.blob_length;
+-	  txc->statfs_delta.compressed_allocated() += result_len;
++    if (global_compaction_flag) {
++      txc->statfs_delta.compressed_allocated() += compressed_len;
++    } else {
++      txc->statfs_delta.compressed_allocated() += result_len;
++    }
+ 	  logger->inc(l_bluestore_compress_success_count);
+ 	  need += result_len;
++    need_compaction += compressed_len;
+ 	} else {
+ 	  rejected = true;
+ 	}
+@@ -12564,6 +13017,7 @@ int BlueStore::_do_alloc_write(
+ 		 << dendl;
+ 	logger->inc(l_bluestore_compress_rejected_count);
+ 	need += wi.blob_length;
++  need_compaction += wi.blob_length;
+       } else {
+ 	rejected = true;
+       }
+@@ -12578,6 +13032,7 @@ int BlueStore::_do_alloc_write(
+ 		 << std::dec << dendl;
+ 	logger->inc(l_bluestore_compress_rejected_count);
+ 	need += wi.blob_length;
++  need_compaction += wi.blob_length;
+       }
+       log_latency("compress@_do_alloc_write",
+ 	l_bluestore_compress_lat,
+@@ -12585,10 +13040,14 @@ int BlueStore::_do_alloc_write(
+ 	cct->_conf->bluestore_log_op_age );
+     } else {
+       need += wi.blob_length;
++      need_compaction += wi.blob_length;
+     }
+   }
++  if (global_compaction_flag) {
++    _compaction_batch_padding(txc, wctx, &need, &need_compaction, min_alloc_size);
++  }
+   PExtentVector prealloc;
+-  prealloc.reserve(2 * wctx->writes.size());;
++  prealloc.reserve(2 * wctx->writes.size());
+   int64_t prealloc_left = 0;
+   prealloc_left = alloc->allocate(
+     need, min_alloc_size, need,
+@@ -12677,6 +13136,9 @@ int BlueStore::_do_alloc_write(
+     }
+     for (auto& p : extents) {
+       txc->allocated.insert(p.offset, p.length);
++      if (wi.compressed || global_compaction_flag) { // compaction switch
++        _compaction_block_usage(txc, o, p);
++      }
+     }
+     dblob.allocated(p2align(b_off, min_alloc_size), final_length, extents);
+ 
+@@ -12708,7 +13170,7 @@ int BlueStore::_do_alloc_write(
+ 
+     // queue io
+     if (!g_conf()->bluestore_debug_omit_block_device_write) {
+-      if (l->length() <= prefer_deferred_size.load()) {
++      if (l->length() <= prefer_deferred_size.load() && !(global_compaction_flag)) {
+ 	dout(20) << __func__ << " deferring small 0x" << std::hex
+ 		 << l->length() << std::dec << " write via deferred" << dendl;
+ 	bluestore_deferred_op_t *op = _get_deferred_op(txc, o);
+@@ -12723,12 +13185,16 @@ int BlueStore::_do_alloc_write(
+ 	op->data = *l;
+ 	logger->inc(l_bluestore_write_small_deferred);
+       } else {
+-	b->get_blob().map_bl(
+-	  b_off, *l,
+-	  [&](uint64_t offset, bufferlist& t) {
+-	    bdev->aio_write(offset, t, &txc->ioc, false);
+-	  });
+-	logger->inc(l_bluestore_write_small_new);
++        if (global_compaction_flag || wi.compaction_deferred) {
++          _choose_compaction_write_pattern(txc, o, b, *l, b_off, wi.compaction_deferred);
++        } else {
++          b->get_blob().map_bl(
++          b_off, *l,
++          [&](uint64_t offset, bufferlist& t) {
++            bdev->aio_write(offset, t, &txc->ioc, false);
++          });
++          logger->inc(l_bluestore_write_small_new);
++        }
+       }
+     }
+   }
+@@ -12744,6 +13210,7 @@ void BlueStore::_wctx_finish(
+   WriteContext *wctx,
+   set<SharedBlob*> *maybe_unshared_blobs)
+ {
++  bool min_compaction_enable = cct->_conf->bluestore_min_compaction_enable;
+   auto oep = wctx->old_extents.begin();
+   while (oep != wctx->old_extents.end()) {
+     auto &lo = *oep;
+@@ -12792,10 +13259,13 @@ void BlueStore::_wctx_finish(
+     b->discard_unallocated(c.get());
+     for (auto e : r) {
+       dout(20) << __func__ << "  release " << e << dendl;
+-      txc->released.insert(e.offset, e.length);
+-      txc->statfs_delta.allocated() -= e.length;
+-      if (blob.is_compressed()) {
++      if (!blob.is_compressed()) {
++        txc->released.insert(e.offset, e.length);
++        txc->statfs_delta.allocated() -= e.length;
++      } else if (min_compaction_enable && blob.is_compressed()) {
+         txc->statfs_delta.compressed_allocated() -= e.length;
++      } else {
++        _compaction_block_release(txc, o, e, min_alloc_size);
+       }
+     }
+     delete &lo;
+diff -uprN ../ceph-14.2.8/src/os/bluestore/BlueStore.h ./ceph-14.2.8/src/os/bluestore/BlueStore.h
+--- ../ceph-14.2.8/src/os/bluestore/BlueStore.h	2020-03-03 01:49:20.000000000 +0800
++++ ./ceph-14.2.8/src/os/bluestore/BlueStore.h	2021-12-28 11:45:53.874054730 +0800
+@@ -47,6 +47,8 @@
+ #include "BlueFS.h"
+ #include "common/EventTrace.h"
+ 
++#include "kps_compaction.h"
++
+ class Allocator;
+ class FreelistManager;
+ class BlueStoreRepairer;
+@@ -1568,6 +1570,22 @@ public:
+     }
+   };
+ 
++  struct compaction_op {
++    typedef enum {
++      OP_COMPACTION = 1,
++    } type_t;
++    uint64_t pattern = 0;
++
++    PExtentVector unaligned_extents;
++    bufferlist compaction_data;
++  };
++
++  struct compaction_transaction {
++    uint64_t seq = 0;
++    list<compaction_op> ops;
++    interval_set<uint64_t> released;
++  };
++
+   struct TransContext final : public AioContext {
+     MEMPOOL_CLASS_HELPERS();
+ 
+@@ -1668,6 +1686,9 @@ public:
+     uint64_t last_nid = 0;     ///< if non-zero, highest new nid we allocated
+     uint64_t last_blobid = 0;  ///< if non-zero, highest new blobid we allocated
+ 
++    bool is_compaction = false;
++    compaction_transaction *compaction_txn = nullptr;
++
+     explicit TransContext(CephContext* cct, Collection *c, OpSequencer *o,
+ 			  list<Context*> *on_commits)
+       : ch(c),
+@@ -1681,6 +1702,7 @@ public:
+     }
+     ~TransContext() {
+       delete deferred_txn;
++      delete compaction_txn;
+     }
+ 
+     void write_onode(OnodeRef &o) {
+@@ -1743,6 +1765,28 @@ public:
+     }
+   };
+ 
++  struct CompactionBatch final : public AioContext {
++    OpSequencer *osr;
++    struct compaction_io {
++      bufferlist bl;
++      uint64_t seq;
++    };
++    map<uint64_t, compaction_io> iomap;
++    IOContext ioc;
++    map<uint64_t, int> seq_bytes;
++
++    void _relocate(CephContext *cct, uint64_t offset, uint64_t length);
++    CompactionBatch(CephContext *cct, OpSequencer *osr)
++	    : osr(osr), ioc(cct, this) {}
++
++    void write_queue(CephContext *cct, uint64_t seq, uint64_t offset, uint64_t length,
++		    bufferlist::const_iterator& bl_batch);
++
++    void aio_finish(BlueStore *store) override {
++      store->_compaction_aio_finish(osr);
++    }
++  };
++
+   class OpSequencer : public RefCountedObject {
+   public:
+     ceph::mutex qlock = ceph::make_mutex("BlueStore::OpSequencer::qlock");
+@@ -1760,6 +1804,9 @@ public:
+     DeferredBatch *deferred_running = nullptr;
+     DeferredBatch *deferred_pending = nullptr;
+ 
++    CompactionBatch *compaction_running = nullptr;
++    CompactionBatch *compaction_pending = nullptr;
++
+     BlueStore *store;
+     coll_t cid;
+ 
+@@ -1958,6 +2005,9 @@ private:
+   atomic_int deferred_aggressive = {0}; ///< aggressive wakeup of kv thread
+   Finisher deferred_finisher, finisher;
+ 
++  ceph::mutex compaction_lock = ceph::make_mutex("Bluestore::compaction_lock");
++  int compaction_queue_size = 0;
++
+   KVSyncThread kv_sync_thread;
+   ceph::mutex kv_lock = ceph::make_mutex("BlueStore::kv_lock");
+   ceph::condition_variable kv_cond;
+@@ -2323,9 +2373,23 @@ private:
+ 
+   bluestore_deferred_op_t *_get_deferred_op(TransContext *txc, OnodeRef o);
+   void _deferred_queue(TransContext *txc);
++  compaction_op *_get_compaction_op(TransContext *txc, OnodeRef o);
++  void _compaction_queue(TransContext *txc);
+ public:
+   void deferred_try_submit();
+ private:
++  void _compaction_block_usage(TransContext *txc, OnodeRef o, bluestore_pextent_t p);
++  void _compaction_block_release(TransContext *txc, OnodeRef o, bluestore_pextent_t e, uint64_t min_alloc_size);
++  void _compaction_submit_batch(TransContext *txc, OpSequencer *osr);
++  void _choose_compaction_write_pattern(
++		TransContext *txc,
++		OnodeRef o,
++		BlobRef b,
++		bufferlist& l,
++		uint64_t b_off,
++		bool is_deferred);
++  void _compaction_aio_finish(OpSequencer *osr);
++  
+   void _deferred_submit_unlock(OpSequencer *osr);
+   void _deferred_aio_finish(OpSequencer *osr);
+   int _deferred_replay();
+@@ -2828,6 +2892,8 @@ private:
+       bool new_blob; ///< whether new blob was created
+ 
+       bool compressed = false;
++      bool compacted = false;
++      bool compaction_deferred = false;
+       bufferlist compressed_bl;
+       size_t compressed_len = 0;
+ 
+@@ -2889,6 +2955,13 @@ private:
+       uint64_t min_alloc_size);
+   };
+ 
++  void _compaction_batch_padding(
++    TransContext *txc,
++    WriteContext *wctx,
++    uint64_t *need,
++    uint64_t *need_compaction,
++    uint64_t chunk_size);
++
+   void _do_write_small(
+     TransContext *txc,
+     CollectionRef &c,
+@@ -3372,4 +3445,5 @@ private:
+   fsck_interval misreferenced_extents;
+ 
+ };
++
+ #endif
+diff -uprN ../ceph-14.2.8/src/os/bluestore/bluestore_types.cc ./ceph-14.2.8/src/os/bluestore/bluestore_types.cc
+--- ../ceph-14.2.8/src/os/bluestore/bluestore_types.cc	2020-03-03 01:49:20.000000000 +0800
++++ ./ceph-14.2.8/src/os/bluestore/bluestore_types.cc	2021-12-28 11:46:21.124054730 +0800
+@@ -827,6 +827,13 @@ void bluestore_blob_t::allocated(uint32_
+   }
+ }
+ 
++bool bluestore_blob_t::is_partial_allocation() {
++  if (extents.size() == 0) {
++    return false;
++  } else {
++    return true;
++  }
++}
+ // cut it out of extents
+ struct vecbuilder {
+   PExtentVector v;
+diff -uprN ../ceph-14.2.8/src/os/bluestore/bluestore_types.h ./ceph-14.2.8/src/os/bluestore/bluestore_types.h
+--- ../ceph-14.2.8/src/os/bluestore/bluestore_types.h	2020-03-03 01:49:20.000000000 +0800
++++ ./ceph-14.2.8/src/os/bluestore/bluestore_types.h	2021-12-28 11:46:32.374054730 +0800
+@@ -702,6 +702,90 @@ public:
+     return 0;
+   }
+   template<class F>
++  int map_compaction_write(uint64_t x_off, uint64_t x_len, F&& f) const{
++	  static_assert(std::is_invocable_r_v<int, F, uint64_t, uint64_t>);
++
++	  auto p = extents.begin();
++	  ceph_assert( p!= extents.end());
++	  while(x_off >= p->length){
++		  x_off -= p->length;
++		  ++p;
++		  ceph_assert(p != extents.end());
++	  }
++	  while(x_len > 0){
++		  ceph_assert( p != extents.end());
++		  uint64_t l = std::min(p->length-x_off, x_len);
++		  int r = f(p->offset + x_off, l);
++		  if(r<0)
++			  return r;
++		  x_off = 0;
++		  x_len -= l;
++		  ++p;
++	  }
++	  return 0;
++  }
++
++template<class F>
++int map_compaction_read(uint64_t x_off, uint64_t x_len, uint64_t chunk_size, bool is_split,
++			bool is_continuous, F&& f) const{
++	static_assert(std::is_invocable_r_v<int, F, uint64_t, uint64_t>);
++
++	auto p = extents.begin();
++	ceph_assert(p != extents.end());
++	while(x_off >= p->length){
++		x_off -= p->length;
++		++p;
++		ceph_assert(p != extents.end());
++	}
++	if(is_continuous){
++		if(!is_split){
++			while(x_len > 0){
++				ceph_assert(p!=extents.end());
++				uint64_t l = x_len;
++				uint64_t offset_align = p->offset - p->offset % chunk_size;
++				int r = f(offset_align, l);
++				if(r < 0)
++					return r;
++				x_len -= l;
++				++p;
++			}
++		}
++		else{
++		  uint64_t offset_align = p->offset - p->offset % chunk_size;
++		  while(x_len > 0){
++			  uint64_t l = std::min(chunk_size, x_len);
++			  int r = f(offset_align, l);
++			  offset_align += l;
++			  if(r < 0)
++			      return r;
++			  x_len -= l;
++			  ceph_assert(x_len>=0);
++		  }
++		}
++		ceph_assert(x_len == 0);
++	}
++	else{
++	   uint32_t len = 0;
++	   for(auto &a:extents){
++		   len += a.length;
++	   }
++	   while(len>0){
++	       ceph_assert(p!=extents.end());
++	       uint64_t read_begin = p->offset - p->offset % chunk_size;
++	       uint64_t read_end = (-(-(p->offset + p->length) & -chunk_size));
++	       uint64_t l = read_end - read_begin;
++	       int r = f(read_begin, l, p->length);
++	       if(r<0)
++		       return r;
++	       len -= p->length;
++	       ++p;
++	   }
++	   ceph_assert(len==0);
++	}
++	return 0;
++}
++
++template<class F>
+   void map_bl(uint64_t x_off,
+ 	      bufferlist& bl,
+ 	      F&& f) const {
+@@ -736,6 +820,26 @@ public:
+     return len;
+   }
+ 
++  bool analyze_allocate_contiguous() const{
++    auto p = extents.begin();
++    uint64_t front = p->offset;
++    uint64_t tail = p->offset + p->length;
++    uint32_t len = 0;
++
++    for(p = extents.begin(); p != extents.end(); p++){
++	    len += p->length;
++	    front = std::min(p->offset, front);
++	    tail = std::max(p->offset + p->length, tail);
++    }
++    return ((tail - front) == len);
++  }
++
++  uint64_t find_extents_offset() const{
++    auto p = extents.begin();
++    uint64_t off = p->offset;
++    return off;
++  }
++
+   uint32_t get_logical_length() const {
+     return logical_length;
+   }
+@@ -841,6 +945,7 @@ public:
+ 
+   void split(uint32_t blob_offset, bluestore_blob_t& rb);
+   void allocated(uint32_t b_off, uint32_t length, const PExtentVector& allocs);
++  bool is_partial_allocation();
+   void allocated_test(const bluestore_pextent_t& alloc); // intended for UT only
+ 
+   /// updates blob's pextents container and return unused pextents eligible
+@@ -891,6 +996,7 @@ ostream& operator<<(ostream& out, const
+ struct bluestore_onode_t {
+   uint64_t nid = 0;                    ///< numeric id (locally unique)
+   uint64_t size = 0;                   ///< object size
++  map<uint64_t, int8_t> chunk_map;
+   map<mempool::bluestore_cache_other::string, bufferptr> attrs;        ///< attrs
+ 
+   struct shard_info {
+@@ -954,6 +1060,7 @@ struct bluestore_onode_t {
+     DENC_START(1, 1, p);
+     denc_varint(v.nid, p);
+     denc_varint(v.size, p);
++    denc(v.chunk_map, p);
+     denc(v.attrs, p);
+     denc(v.flags, p);
+     denc(v.extent_map_shards, p);
+diff -uprN ../ceph-14.2.8/src/os/bluestore/fastbmap_allocator_impl.cc ./ceph-14.2.8/src/os/bluestore/fastbmap_allocator_impl.cc
+--- ../ceph-14.2.8/src/os/bluestore/fastbmap_allocator_impl.cc	2020-03-03 01:49:20.000000000 +0800
++++ ./ceph-14.2.8/src/os/bluestore/fastbmap_allocator_impl.cc	2021-12-28 11:46:50.464054730 +0800
+@@ -629,3 +629,87 @@ void AllocatorLevel01Loose::dump(
+     notify(off, len);
+ }
+ 
++uint64_t AllocatorLevel01Loose::_claim_free_to_left_l0(int64_t l0_pos_start)
++{
++  int64_t d0 = L0_ENTRIES_PER_SLOT;
++
++  int64_t pos = l0_pos_start - 1;
++  slot_t bits = (slot_t)1 << (pos % d0);
++  int64_t idx = pos / d0;
++  slot_t* val_s = l0.data() + idx;
++
++  int64_t pos_e = p2align<int64_t>(pos, d0);
++
++  while (pos >= pos_e) {
++    if (0 == ((*val_s) & bits))
++      return pos + 1;
++    (*val_s) &= ~bits;
++    bits >>= 1;
++    --pos;
++  }
++  --idx;
++  val_s = l0.data() + idx;
++  while (idx >= 0 && (*val_s) == all_slot_set) {
++    *val_s = all_slot_clear;
++    --idx;
++    pos -= d0;
++    val_s = l0.data() + idx;
++  }
++
++  if (idx >= 0 &&
++      (*val_s) != all_slot_set && (*val_s) != all_slot_clear) {
++    int64_t pos_e = p2align<int64_t>(pos, d0);
++    slot_t bits = (slot_t)1 << (pos % d0);
++    
++    while (pos >= pos_e) {
++      if (0 == ((*val_s) & bits))
++        return pos + 1;
++      (*val_s) &= ~bits;
++      bits >>= 1;
++      --pos;
++    }
++  }
++  return pos + 1;
++}
++
++uint64_t AllocatorLevel01Loose::_claim_free_to_right_l0(int64_t l0_pos_start)
++{
++  auto d0 = L0_ENTRIES_PER_SLOT;
++
++  int64_t pos = l0_pos_start;
++  slot_t bits = (slot_t)1 << (pos % d0);
++  size_t idx = pos / d0;
++  slot_t* val_s = l0.data() + idx;
++
++  int64_t pos_e = p2roundup<int64_t>(pos + 1, d0);
++
++  while (pos < pos_e) {
++    if (0 == ((*val_s) & bits))
++      return pos;
++    (*val_s) &= ~bits;
++    bits <<= 1;
++    ++pos;
++  }
++  ++idx;
++  val_s = l0.data() + idx;
++  while (idx < l0.size() && (*val_s) == all_slot_set) {
++    *val_s = all_slot_clear;
++    ++idx;
++    pos += d0;
++    val_s = l0.data() + idx;
++  }
++
++  if (idx < l0.size() &&
++      (*val_s) != all_slot_set && (*val_s) != all_slot_clear) {
++    int64_t pos_e = p2roundup<int64_t>(pos + 1, d0);
++    slot_t bits = (slot_t)1 << (pos % d0);
++    while (pos < pos_e) {
++      if (0 == ((*val_s) & bits))
++        return pos;
++      (*val_s) &= ~bits;
++      bits <<= 1;
++      ++pos;
++    }
++  }
++  return pos;
++}
+diff -uprN ../ceph-14.2.8/src/os/bluestore/fastbmap_allocator_impl.h ./ceph-14.2.8/src/os/bluestore/fastbmap_allocator_impl.h
+--- ../ceph-14.2.8/src/os/bluestore/fastbmap_allocator_impl.h	2020-03-03 01:49:20.000000000 +0800
++++ ./ceph-14.2.8/src/os/bluestore/fastbmap_allocator_impl.h	2021-12-28 11:46:59.964054730 +0800
+@@ -144,6 +144,7 @@ class AllocatorLevel01Loose : public All
+     CHILD_PER_SLOT = bits_per_slot / L1_ENTRY_WIDTH, // 32
+     L1_ENTRIES_PER_SLOT = bits_per_slot / L1_ENTRY_WIDTH, //32
+     CHILD_PER_SLOT_L0 = bits_per_slot, // 64
++    L0_ENTRIES_PER_SLOT = bits_per_slot, //64
+   };
+   uint64_t _children_per_slot() const override
+   {
+@@ -325,6 +326,9 @@ protected:
+   void _mark_l1_on_l0(int64_t l0_pos, int64_t l0_pos_end);
+   void _mark_alloc_l0(int64_t l0_pos_start, int64_t l0_pos_end);
+ 
++  uint64_t _claim_free_to_left_l0(int64_t l0_pos_start);
++  uint64_t _claim_free_to_right_l0(int64_t l0_pos_start);
++
+   void _mark_alloc_l1_l0(int64_t l0_pos_start, int64_t l0_pos_end)
+   {
+     _mark_alloc_l0(l0_pos_start, l0_pos_end);
+@@ -426,6 +430,32 @@ protected:
+     return l0_granularity * (l0_pos_end - l0_pos_start);
+   }
+ 
++  uint64_t claim_free_to_left_l1(uint64_t offs)
++  {
++    uint64_t l0_pos_end = offs / l0_granularity;
++    uint64_t l0_pos_start = _claim_free_to_left_l0(l0_pos_end);
++    if (l0_pos_start < l0_pos_end) {
++      _mark_l1_on_l0(
++	p2align(l0_pos_start, uint64_t(bits_per_slotset)),
++	p2roundup(l0_pos_end, uint64_t(bits_per_slotset)));
++      return l0_granularity * (l0_pos_end - l0_pos_start);
++    }
++    return 0;
++  }
++
++  uint64_t claim_free_to_right_l1(uint64_t offs)
++  {
++    uint64_t l0_pos_start = offs / l0_granularity;
++    uint64_t l0_pos_end = _claim_free_to_right_l0(l0_pos_start);
++    if (l0_pos_start < l0_pos_end) {
++      _mark_l1_on_l0(
++	p2align(l0_pos_start, uint64_t(bits_per_slotset)),
++	p2roundup(l0_pos_end, uint64_t(bits_per_slotset)));
++      return l0_granularity * (l0_pos_end - l0_pos_start);
++    }
++    return 0;
++  }
++
+ public:
+   uint64_t debug_get_allocated(uint64_t pos0 = 0, uint64_t pos1 = 0)
+   {
+@@ -525,16 +555,43 @@ public:
+       l1.collect_stats(bins_overall);
+   }
+ 
+-protected:
+-  ceph::mutex lock = ceph::make_mutex("AllocatorLevel02::lock");
+-  L1 l1;
+-  slot_vector_t l2;
+-  uint64_t l2_granularity = 0; // space per entry
+-  uint64_t available = 0;
+-  uint64_t last_pos = 0;
++  uint64_t claim_free_to_left(uint64_t offset) {
++    std::lock_guard l(lock);
++    auto allocated = l1.claim_free_to_left_l1(offset);
++    ceph_assert(available >= allocated);
++    available -= allocated;
++    
++    uint64_t l2_pos = (offset - allocated) / l2_granularity;
++    uint64_t l2_pos_end =
++      p2roundup(int64_t(offset), int64_t(l2_granularity)) / l2_granularity;
++    _mark_l2_on_l1(l2_pos, l2_pos_end);
++    return allocated;
++  }
+ 
+-  enum {
+-    CHILD_PER_SLOT = bits_per_slot, // 64
++
++  uint64_t claim_free_to_right(uint64_t offset) {
++    std::lock_guard l(lock);
++    auto allocated = l1.claim_free_to_right_l1(offset);
++    ceph_assert(available >= allocated);
++    available -= allocated;
++    
++    uint64_t l2_pos = (offset) / l2_granularity;
++    int64_t end = offset + allocated;
++    uint64_t l2_pos_end = p2roundup(end, int64_t(l2_granularity)) / l2_granularity;
++    _mark_l2_on_l1(l2_pos, l2_pos_end);
++    return allocated;
++  }
++ 
++ protected:
++   ceph::mutex lock = ceph::make_mutex("AllocatorLevel02::lock");
++   L1 l1;
++   slot_vector_t l2;
++   uint64_t l2_granularity = 0; // space per entry
++   uint64_t available = 0;
++   uint64_t last_pos = 0;
++ 
++   enum {
++     CHILD_PER_SLOT = bits_per_slot, // 64
+   };
+ 
+   uint64_t _children_per_slot() const override
+diff -uprN ../ceph-14.2.8/src/os/bluestore/FreelistManager.h ./ceph-14.2.8/src/os/bluestore/FreelistManager.h
+--- ../ceph-14.2.8/src/os/bluestore/FreelistManager.h	2020-03-03 01:49:20.000000000 +0800
++++ ./ceph-14.2.8/src/os/bluestore/FreelistManager.h	2021-12-28 11:47:47.384054730 +0800
+@@ -10,8 +10,16 @@
+ #include <ostream>
+ #include "kv/KeyValueDB.h"
+ 
++#include "BlueStore.h"
++
+ class FreelistManager {
+ public:
++  map<uint64_t, int8_t> new_bitmap;
++  vector<string> count_array;
++  vector<string> bit_array_one;
++  vector<string> bit_array_two;
++  vector<int8_t> count_number;
++
+   CephContext* cct;
+   FreelistManager(CephContext* cct) : cct(cct) {}
+   virtual ~FreelistManager() {}
+@@ -48,7 +56,14 @@ public:
+   virtual uint64_t get_alloc_units() const = 0;
+   virtual uint64_t get_alloc_size() const = 0;
+ 
++  virtual void onebit_xor(uint64_t offset, KeyValueDB::Transaction txn, uint64_t min_alloc_size) = 0;
++  virtual int onebit_bitmap_create(KeyValueDB *kvdb, uint64_t min_alloc_size) = 0;
++  virtual void onebit_check_bitmap(const PExtentVector& extents, bool compressed, uint64_t min_alloc_size) = 0;
++  virtual void convert_num() = 0;
++  virtual int64_t reuse_count() = 0;
++  virtual void plus_function(uint64_t offset, uint64_t min_alloc_size) = 0;
++  virtual void minus_function(uint64_t offset, uint64_t min_alloc_size) = 0;
++  virtual int zero_check_function(uint64_t offset, uint64_t min_alloc_size) = 0;
+ };
+ 
+-
+ #endif
+diff -uprN ../ceph-14.2.8/src/os/bluestore/HybridAllocator.cc ./ceph-14.2.8/src/os/bluestore/HybridAllocator.cc
+--- ../ceph-14.2.8/src/os/bluestore/HybridAllocator.cc	1970-01-01 08:00:00.000000000 +0800
++++ ./ceph-14.2.8/src/os/bluestore/HybridAllocator.cc	2021-12-28 11:47:59.424054730 +0800
+@@ -0,0 +1,218 @@
++// -*- mode:C++; tab-width:8; c-basic-offset:2; indent-tabs-mode:t -*-
++// vim: ts=8 sw=2 smarttab
++
++#include "HybridAllocator.h"
++#include <limits>
++#include "common/config_proxy.h"
++#include "common/debug.h"
++
++#define dout_context cct
++#define dout_subsys ceph_subsys_bluestore
++#undef  dout_prefix
++#define dout_prefix *_dout << "HybridAllocator "
++int64_t HybridAllocator::allocate(
++  uint64_t want,
++  uint64_t unit,
++  uint64_t max_alloc_size,
++  int64_t hint,
++  PExtentVector *extents)
++{
++  ldout(cct, 10) << __func__ << std::hex
++                 << " want 0x" << want
++                 << " unit 0x" << unit
++                 << "max_alloc_size 0x" << max_alloc_size
++                 << " hint 0x" << hint
++                 << std::dec << dendl;
++  ceph_assert(isp2(unit));
++  ceph_assert(want % unit == 0);
++
++  if (max_alloc_size == 0) {
++    max_alloc_size = want;
++  }
++  if (constexpr auto cap = std::numeric_limits<decltype(bluestore_pextent_t::length)>::max();
++      max_alloc_size >= cap) {
++    max_alloc_size = p2align(uint64_t(cap), (uint64_t)get_block_size());
++  }
++
++  std::lock_guard l(lock);
++
++  int64_t res;
++  PExtentVector local_extents;
++
++  // preserve original 'extents' vector state
++  auto orig_size = extents->size();
++  auto orig_pos = extents->end();
++  if (orig_size) {
++    --orig_pos;
++  }
++
++  // try bitmap first to avoid unneeded contiguous extents split if
++  // desired amount is less than short range in AVL
++  if (bmap_alloc && bmap_alloc->get_free() &&
++    want < _lowest_size_available()) {
++    res = bmap_alloc->allocate(want, unit, max_alloc_size, hint, extents);
++    if (res < 0) {
++      //got a failure, release already allocated and
++      //start over allocation from avl
++      if (orig_size) {
++        local_extents.insert(
++          local_extents.end(), ++orig_pos, extents->end());
++        extents->resize(orig_size);
++      } else {
++        extents->swap(local_extents);
++      }
++      bmap_alloc->release(local_extents);
++      res = 0;
++    }
++    if ((uint64_t)res < want) {
++      auto res2 = _allocate(want - res, unit, max_alloc_size, hint, extents);
++      if (res2 < 0) {
++        res = res2; // caller to do the release
++      } else {
++        res += res2;
++      }
++    }
++  } else {
++    res = _allocate(want, unit, max_alloc_size, hint, extents);
++    if (res < 0) {
++      // got a failure, release already allocated and
++      // start over allocation from bitmap
++      if (orig_size) {
++        local_extents.insert(
++          local_extents.end(), ++orig_pos, extents->end());
++        extents->resize(orig_size);
++      } else {
++        extents->swap(local_extents);
++      }
++      _release(local_extents);
++      res = 0;
++    }
++    if ((uint64_t)res < want ) {
++      auto res2 = bmap_alloc ?
++        bmap_alloc->allocate(want - res, unit, max_alloc_size, hint, extents) :
++        0;
++      if (res2 < 0 ) {
++        res = res2; //caller to do the release
++      } else {
++        res += res2;
++      }
++    }
++  }
++  return res ? res : -ENOSPC;
++}
++
++void HybridAllocator::release(const interval_set<uint64_t>& release_set) {
++  std::lock_guard l(lock);
++  // this will attempt to put free ranges into AvlAllocator first and
++  // fallback to bitmap one via _try_insert_range call
++  _release(release_set);
++}
++
++uint64_t HybridAllocator::get_free()
++{
++  std::lock_guard l(lock);
++  return (bmap_alloc ? bmap_alloc->get_free() : 0) + _get_free();
++}
++
++double HybridAllocator::get_fragmentation(uint64_t alloc_uint)
++{
++  std::lock_guard l(lock);
++  auto  f = AvlAllocator::_get_fragmentation();
++  auto bmap_free = bmap_alloc ? bmap_alloc->get_free() : 0;
++  if (bmap_free) {
++    auto _free = _get_free() + bmap_free;
++    auto bf = bmap_alloc->get_fragmentation();
++    
++    f = f * _get_free() / _free + bf * bmap_free / _free;
++  }
++  return f;
++}
++
++void HybridAllocator::dump()
++{
++  std::lock_guard l(lock);
++  AvlAllocator::_dump();
++  if (bmap_alloc) {
++    bmap_alloc->dump();
++  }
++  ldout(cct, 0) << __func__
++    << " avl_free: " << _get_free()
++    << " bmap_free: " << (bmap_alloc ? bmap_alloc->get_free() : 0)
++    << dendl;
++}
++
++void HybridAllocator::dump(std::function<void(uint64_t offset, uint64_t length)> notify)
++{
++  AvlAllocator::dump(notify);
++  if (bmap_alloc) {
++    bmap_alloc->dump(notify);
++  }
++}
++  
++void HybridAllocator::init_rm_free(uint64_t offset, uint64_t length)
++{
++  std::lock_guard l(lock);
++  ldout(cct, 10) << __func__ << std::hex
++                 << " offset 0x" << offset
++                 << " length 0x" << length
++                 << std::dec <<dendl;
++  _try_remove_from_tree(offset, length,
++    [&](uint64_t o, uint64_t l, bool found) {
++    if (!found) {
++      if (bmap_alloc) {
++        bmap_alloc->init_rm_free(o, l);
++      } else {
++        lderr(cct) << "init_rm_free lambda" << std::hex
++          << "Uexpected extent: "
++          << " 0x" << o << "~" << l
++          << std::dec << dendl;
++        ceph_assert(false);
++       }
++     }
++    });
++}
++
++void HybridAllocator::shutdown()
++{
++  std::lock_guard l(lock);
++  _shutdown();
++  if (bmap_alloc) {
++    bmap_alloc->shutdown();
++    delete bmap_alloc;
++    bmap_alloc = nullptr;
++  }
++}
++
++void HybridAllocator::_spillover_range(uint64_t start, uint64_t end)
++{
++  auto size = end - start;
++  dout(20) << __func__
++    << std::hex << " "
++    << start << "~" << size
++    << std::dec
++    << dendl;
++  ceph_assert(size);
++  if (!bmap_alloc) {
++    dout(1) << __func__
++      << std::hex
++      << " constructing fallback allocator"
++      << dendl;
++    bmap_alloc = new BitmapAllocator(cct,
++      get_capacity(),
++      get_block_size(),
++      get_name());
++  }
++  bmap_alloc->init_add_free(start, size);
++}
++
++void HybridAllocator::_add_to_tree(uint64_t start, uint64_t size)
++{
++  if (bmap_alloc) {
++    uint64_t head = bmap_alloc->claim_free_to_left(start);
++    uint64_t tail = bmap_alloc->claim_free_to_right(start + size);
++    ceph_assert(head <= start);
++    start -= head;
++    size += head + tail;
++  }
++  AvlAllocator::_add_to_tree(start, size);
++}
+diff -uprN ../ceph-14.2.8/src/os/bluestore/HybridAllocator.h ./ceph-14.2.8/src/os/bluestore/HybridAllocator.h
+--- ../ceph-14.2.8/src/os/bluestore/HybridAllocator.h	1970-01-01 08:00:00.000000000 +0800
++++ ./ceph-14.2.8/src/os/bluestore/HybridAllocator.h	2021-12-28 11:48:11.174054730 +0800
+@@ -0,0 +1,48 @@
++// -*- mode:C++; tab-width:8; c-basic-offset:2; indent-tabs-mode:t -*-
++// vim: ts=8 sw=2 smarttab
++
++#pragma once
++
++#include <mutex>
++#include "AvlAllocator.h"
++#include "BitmapAllocator.h"
++
++class HybridAllocator : public AvlAllocator {
++  BitmapAllocator* bmap_alloc = nullptr;
++public:
++  HybridAllocator(CephContext* cct, int64_t device_size, int64_t _block_size,
++                  uint64_t max_mem,
++              const std::string& name) :
++      AvlAllocator(cct, device_size, _block_size, max_mem, name) {
++  }
++  int64_t allocate(
++    uint64_t want,
++    uint64_t unit,
++    uint64_t max_alloc_size,
++    int64_t hint,
++    PExtentVector *extents) override;
++  void release(const interval_set<uint64_t>& release_set) override;
++  uint64_t get_free() override;
++  double get_fragmentation(uint64_t alloc_uint) override;
++  //double get_fragmentation();
++
++  void dump() override;
++  void dump(std::function<void(uint64_t offset, uint64_t length)> notify) override;
++  void init_rm_free(uint64_t offset, uint64_t length) override;
++  void shutdown() override;
++
++protected:
++  // intended primarily for UT
++  BitmapAllocator* get_bmap() {
++    return bmap_alloc;
++  }
++  const BitmapAllocator* get_bmap() const {
++    return bmap_alloc;
++  }
++private:
++  
++  void _spillover_range(uint64_t start, uint64_t end) override;
++
++  // called when extent to be released/marked free
++  void _add_to_tree(uint64_t start, uint64_t size) override;
++ };
+diff -uprN ../ceph-14.2.8/src/os/CMakeLists.txt ./ceph-14.2.8/src/os/CMakeLists.txt
+--- ../ceph-14.2.8/src/os/CMakeLists.txt	2020-03-03 01:49:20.000000000 +0800
++++ ./ceph-14.2.8/src/os/CMakeLists.txt	2021-12-28 11:48:29.684054730 +0800
+@@ -32,6 +32,8 @@ if(WITH_BLUESTORE)
+     bluestore/FreelistManager.cc
+     bluestore/StupidAllocator.cc
+     bluestore/BitmapAllocator.cc
++    bluestore/AvlAllocator.cc
++    bluestore/HybridAllocator.cc
+   )
+ endif(WITH_BLUESTORE)
+ 
+@@ -117,6 +119,7 @@ if(WITH_BLUESTORE)
+     bluestore/bluestore_tool.cc)
+   target_link_libraries(ceph-bluestore-tool
+     os global)
++  target_link_libraries(os heap_profiler kv kps_compaction)
+   install(TARGETS ceph-bluestore-tool
+     DESTINATION bin)
+ endif()
+diff -uprN ../ceph-14.2.8/src/os/kv.h ./ceph-14.2.8/src/os/kv.h
+--- ../ceph-14.2.8/src/os/kv.h	2020-03-03 01:49:20.000000000 +0800
++++ ./ceph-14.2.8/src/os/kv.h	2021-12-28 11:48:44.164054730 +0800
+@@ -73,4 +73,17 @@ inline static const char *_key_decode_u6
+   return key + 8;
+ }
+ 
++template<typename T>
++inline static void _key_encode_u64_new(uint64_t u, T *key){
++	key->append((char*)&u, 8);
++	key->append("00");
++}
++
++inline static const char* _key_decode_u64_new(const char *key, uint64_t *pu){
++	uint64_t bu;
++	memcpy(&bu, key, 8);
++	*pu = bu;
++	return key+10;
++}
++
+ #endif
