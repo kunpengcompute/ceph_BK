@@ -1,0 +1,1432 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index c548b8e33..172573282 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -273,7 +273,7 @@ if(WITH_BLUESTORE_PMEM)
+   set(HAVE_BLUESTORE_PMEM ON)
+ endif()
+ 
+-CMAKE_DEPENDENT_OPTION(WITH_SPDK "Enable SPDK" OFF
++CMAKE_DEPENDENT_OPTION(WITH_SPDK "Enable SPDK" ON
+   "CMAKE_SYSTEM_PROCESSOR MATCHES i386|i686|amd64|x86_64|AMD64|aarch64" OFF)
+ if(WITH_SPDK)
+   if(NOT WITH_BLUESTORE)
+diff --git a/ceph.spec b/ceph.spec
+index accc10eb9..b34bb08b7 100644
+--- a/ceph.spec
++++ b/ceph.spec
+@@ -1507,6 +1507,11 @@ mkdir -p %{buildroot}%{_localstatedir}/lib/ceph/bootstrap-rgw
+ mkdir -p %{buildroot}%{_localstatedir}/lib/ceph/bootstrap-mgr
+ mkdir -p %{buildroot}%{_localstatedir}/lib/ceph/bootstrap-rbd
+ mkdir -p %{buildroot}%{_localstatedir}/lib/ceph/bootstrap-rbd-mirror
++mkdir -p %{buildroot}/var/lib/ceph/spdk_lib/include/spdk
++mkdir -p %{buildroot}/var/lib/ceph/spdk_lib/scripts
++cp -v src/spdk/scripts/common.sh %{buildroot}/var/lib/ceph/spdk_lib/scripts/common.sh
++cp -v src/spdk/scripts/setup.sh %{buildroot}/var/lib/ceph/spdk_lib/scripts/setup.sh
++cp -v src/spdk/include/spdk/pci_ids.h %{buildroot}/var/lib/ceph/spdk_lib/include/spdk/pci_ids.h
+ 
+ # prometheus alerts
+ install -m 644 -D monitoring/ceph-mixin/prometheus_alerts.yml %{buildroot}/etc/prometheus/ceph/ceph_default_alerts.yml
+@@ -1533,6 +1538,9 @@ rm -rf %{_vpath_builddir}
+ #################################################################################
+ %files
+ 
++/var/lib/ceph/spdk_lib/scripts/common.sh
++/var/lib/ceph/spdk_lib/scripts/setup.sh
++/var/lib/ceph/spdk_lib/include/spdk/pci_ids.h
+ %files base
+ %{_bindir}/ceph-crash
+ %{_bindir}/crushtool
+diff --git a/ceph.spec.in b/ceph.spec.in
+index 9eb25eb04..3363f9f8b 100644
+--- a/ceph.spec.in
++++ b/ceph.spec.in
+@@ -1508,6 +1508,11 @@ mkdir -p %{buildroot}%{_localstatedir}/lib/ceph/bootstrap-rgw
+ mkdir -p %{buildroot}%{_localstatedir}/lib/ceph/bootstrap-mgr
+ mkdir -p %{buildroot}%{_localstatedir}/lib/ceph/bootstrap-rbd
+ mkdir -p %{buildroot}%{_localstatedir}/lib/ceph/bootstrap-rbd-mirror
++mkdir -p %{buildroot}/var/lib/ceph/spdk_lib/include/spdk
++mkdir -p %{buildroot}/var/lib/ceph/spdk_lib/scripts
++cp -v src/spdk/scripts/common.sh %{buildroot}/var/lib/ceph/spdk_lib/scripts/common.sh
++cp -v src/spdk/scripts/setup.sh %{buildroot}/var/lib/ceph/spdk_lib/scripts/setup.sh
++cp -v src/spdk/include/spdk/pci_ids.h %{buildroot}/var/lib/ceph/spdk_lib/include/spdk/pci_ids.h
+ 
+ # prometheus alerts
+ install -m 644 -D monitoring/ceph-mixin/prometheus_alerts.yml %{buildroot}/etc/prometheus/ceph/ceph_default_alerts.yml
+@@ -1534,6 +1539,9 @@ rm -rf %{_vpath_builddir}
+ #################################################################################
+ %files
+ 
++/var/lib/ceph/spdk_lib/scripts/common.sh
++/var/lib/ceph/spdk_lib/scripts/setup.sh
++/var/lib/ceph/spdk_lib/include/spdk/pci_ids.h
+ %files base
+ %{_bindir}/ceph-crash
+ %{_bindir}/crushtool
+diff --git a/cmake/modules/BuildDPDK.cmake b/cmake/modules/BuildDPDK.cmake
+index f2e3d2186..86f2ba97a 100644
+--- a/cmake/modules/BuildDPDK.cmake
++++ b/cmake/modules/BuildDPDK.cmake
+@@ -60,18 +60,18 @@ function(do_build_dpdk dpdk_dir)
+ 
+   include(FindMake)
+   find_make("MAKE_EXECUTABLE" "make_cmd")
+-  execute_process(
+-    COMMAND ${MAKE_EXECUTABLE} showconfigs
+-    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/src/spdk/dpdk
+-    OUTPUT_VARIABLE supported_targets
+-    OUTPUT_STRIP_TRAILING_WHITESPACE)
+-  string(REPLACE "\n" ";" supported_targets "${supported_targets}")
+-  list(FIND supported_targets ${target} found)
+-  if(found EQUAL -1)
+-    message(FATAL_ERROR "not able to build DPDK support: "
+-      "unsupported target. "
+-      "\"${target}\" not listed in ${supported_targets}")
+-  endif()
++  #execute_process(
++  #  COMMAND ${MAKE_EXECUTABLE} showconfigs
++  #  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/src/spdk/dpdk
++  #  OUTPUT_VARIABLE supported_targets
++  #  OUTPUT_STRIP_TRAILING_WHITESPACE)
++  #string(REPLACE "\n" ";" supported_targets "${supported_targets}")
++  #list(FIND supported_targets ${target} found)
++  #if(found EQUAL -1)
++  #  message(FATAL_ERROR "not able to build DPDK support: "
++  #    "unsupported target. "
++  #    "\"${target}\" not listed in ${supported_targets}")
++  #endif()
+ 
+   if(Seastar_DPDK AND WITH_SPDK)
+     message(FATAL_ERROR "not able to build DPDK with "
+diff --git a/cmake/modules/BuildSPDK.cmake b/cmake/modules/BuildSPDK.cmake
+index 0a6acc8d0..edfc02817 100644
+--- a/cmake/modules/BuildSPDK.cmake
++++ b/cmake/modules/BuildSPDK.cmake
+@@ -48,14 +48,14 @@ macro(build_spdk)
+     DEPENDS dpdk-ext
+     SOURCE_DIR ${source_dir}
+     CONFIGURE_COMMAND ./configure
+-      --with-dpdk=${DPDK_DIR}
+-      --without-isal
+-      --without-vhost
+-      --target-arch=${target_arch}
++    #--with-dpdk=${DPDK_DIR}
++    # --without-isal
++    # --without-vhost
++    # --target-arch=${target_arch}
+     # unset $CFLAGS, otherwise it will interfere with how SPDK sets
+     # its include directory.
+     # unset $LDFLAGS, otherwise SPDK will fail to mock some functions.
+-    BUILD_COMMAND env -i PATH=$ENV{PATH} CC=${CMAKE_C_COMPILER} ${make_cmd} EXTRA_CFLAGS=${spdk_CFLAGS}
++    BUILD_COMMAND env -i PATH=$ENV{PATH} CC=${CMAKE_C_COMPILER} make EXTRA_CFLAGS=${spdk_CFLAGS}
+     BUILD_IN_SOURCE 1
+     BUILD_BYPRODUCTS ${spdk_libs}
+     INSTALL_COMMAND ""
+@@ -63,6 +63,17 @@ macro(build_spdk)
+     LOG_BUILD ON
+     LOG_MERGED_STDOUTERR ON
+     LOG_OUTPUT_ON_FAILURE ON)
++
++  set(DPDK_LIB ${CMAKE_SOURCE_DIR}/src/spdk/dpdk/build/lib)
++  set(DPDK_USE_PATH ${DPDK_DIR}/lib)
++  ExternalProject_Add(dpdk-cp
++  DEPENDS spdk-ext
++  SOURCE_DIR ${CMAKE_SOURCE_DIR}/src/spdk/dpdk
++  CONFIGURE_COMMAND ""
++  BUILD_COMMAND ""
++  INSTALL_COMMAND rm -rf ${DPDK_USE_PATH} && cp -rf ${DPDK_LIB} ${DPDK_DIR}
++  )
++
+   unset(make_cmd)
+   foreach(spdk_lib ${SPDK_LIBRARIES})
+     add_dependencies(${spdk_lib} spdk-ext)
+@@ -74,6 +85,10 @@ macro(build_spdk)
+     INTERFACE_LINK_LIBRARIES spdk::util)
+   set_target_properties(spdk::util PROPERTIES
+     INTERFACE_LINK_LIBRARIES ${UUID_LIBRARIES})
++  set_target_properties(spdk::nvme PROPERTIES
++    INTERFACE_LINK_LIBRARIES "spdk::env_dpdk")
++  set_target_properties(spdk::trace PROPERTIES
++    INTERFACE_LINK_LIBRARIES "spdk::env_dpdk")
+   set(SPDK_INCLUDE_DIR "${source_dir}/include")
+   unset(source_dir)
+ endmacro()
+diff --git a/src/blk/spdk/NVMEDevice.cc b/src/blk/spdk/NVMEDevice.cc
+index 80377cd9b..826a42847 100644
+--- a/src/blk/spdk/NVMEDevice.cc
++++ b/src/blk/spdk/NVMEDevice.cc
+@@ -52,6 +52,7 @@ using namespace std;
+ static constexpr uint16_t data_buffer_default_num = 1024;
+ 
+ static constexpr uint32_t data_buffer_size = 8192;
++static constexpr uint32_t alloc_buffer_size = 0x200000;
+ 
+ static constexpr uint16_t inline_segment_num = 32;
+ 
+@@ -133,6 +134,7 @@ class SharedDriverQueueData {
+   public:
+     uint32_t current_queue_depth = 0;
+     std::atomic_ulong completed_op_seq, queue_op_seq;
++    vector<void *> alloc_buf_list;
+     bi::slist<data_cache_buf, bi::constant_time_size<true>> data_buf_list;
+     void _aio_handle(Task *t, IOContext *ioc);
+ 
+@@ -152,13 +154,16 @@ class SharedDriverQueueData {
+     ceph_assert(qpair != NULL);
+ 
+     // allocate spdk dma memory
+-    for (uint16_t i = 0; i < data_buffer_default_num; i++) {
+-      void *b = spdk_dma_zmalloc(data_buffer_size, CEPH_PAGE_SIZE, NULL);
++    for (uint16_t i = 0; i < data_buffer_default_num * data_buffer_size / alloc_buffer_size; i++) {
++      void *b = spdk_dma_zmalloc(alloc_buffer_size, CEPH_PAGE_SIZE, NULL);
+       if (!b) {
+         derr << __func__ << " failed to create memory pool for nvme data buffer" << dendl;
+         ceph_assert(b);
+       }
+-      data_buf_list.push_front(*reinterpret_cast<data_cache_buf *>(b));
++      alloc_buf_list.push_back(b);
++      for (uint16_t j = 0; j < alloc_buffer_size / data_buffer_size; j++) {
++        data_buf_list.push_front(*reinterpret_cast<data_cache_buf *>(b + (j * data_buffer_size)));
++      }
+     }
+   }
+ 
+@@ -166,8 +171,10 @@ class SharedDriverQueueData {
+     if (qpair) {
+       spdk_nvme_ctrlr_free_io_qpair(qpair);
+     }
+-
+-    data_buf_list.clear_and_dispose(spdk_dma_free);
++    data_buf_list.clear();
++    for (vector<void *>::iterator it = alloc_buf_list.begin(); it != alloc_buf_list.end(); ++it) {
++        spdk_dma_free(*it);
++    }
+   }
+ };
+ 
+@@ -330,8 +337,7 @@ void SharedDriverQueueData::_aio_handle(Task *t, IOContext *ioc)
+ 
+   int r = 0;
+   uint64_t lba_off, lba_count;
+-  uint32_t max_io_completion = (uint32_t)g_conf().get_val<uint64_t>("bluestore_spdk_max_io_completion");
+-  uint64_t io_sleep_in_us = g_conf().get_val<uint64_t>("bluestore_spdk_io_sleep");
++  uint32_t max_io_completion = 0;
+ 
+   while (ioc->num_running) {
+  again:
+@@ -340,8 +346,6 @@ void SharedDriverQueueData::_aio_handle(Task *t, IOContext *ioc)
+       r = spdk_nvme_qpair_process_completions(qpair, max_io_completion);
+       if (r < 0) {
+         ceph_abort();
+-      } else if (r == 0) {
+-        usleep(io_sleep_in_us);
+       }
+     }
+ 
+@@ -719,7 +723,7 @@ int NVMEDevice::open(const string& p)
+   }
+ 
+   driver->register_device(this);
+-  block_size = driver->get_block_size();
++  block_size = cct->_conf->bdev_block_size;
+   size = driver->get_size();
+   name = trid.traddr;
+ 
+@@ -959,3 +963,13 @@ int NVMEDevice::invalidate_cache(uint64_t off, uint64_t len)
+   dout(5) << __func__ << " " << off << "~" << len << dendl;
+   return 0;
+ }
++
++extern "C" const struct spdk_nvme_transport_ops pcie_ops;
++const char *g_pcie_ops_name = NULL;
++
++static void __attribute__((constructor)) static_library_pcie_symbal_loss_bug_fix()
++{
++  const spdk_nvme_transport_ops *ops = &pcie_ops;
++  g_pcie_ops_name = ops->name;
++}
++
+diff --git a/src/cephadm/cephadm b/src/cephadm/cephadm
+index e59cf80b6..6526d1e55 100644
+--- a/src/cephadm/cephadm
++++ b/src/cephadm/cephadm
+@@ -30,6 +30,7 @@ from typing import Dict, List, Tuple, Optional, Union, Any, NoReturn, Callable,
+ 
+ import re
+ import uuid
++import yaml
+ 
+ from configparser import ConfigParser
+ from contextlib import redirect_stdout
+@@ -6429,6 +6430,401 @@ def command_ls(ctx):
+     print(json.dumps(ls, indent=4))
+ 
+ 
++@infer_fsid
++@infer_image
++def create_spdk_osd(ctx) -> int:
++    if 'fsid' not in ctx :
++        print('please start ceph cluster first.')
++        return 0
++    # get image name with hash
++    container_info = get_container_info(ctx, 'crash', False)
++    if not container_info:
++        print('please start ceph cluster first.')
++        return 0
++    if len(ctx._args.command) != 1:
++        print('No legal command is provided, init deploy or create. e.g., cephadm spdkosd --b osd.yaml create')
++        return -1
++    command = ctx._args.command[0]
++
++    # ceph default route is: /var/lib/ceph/{fsid}
++    cephVarLibPath='{}/{}'.format(ctx._conf.data_dir, ctx.fsid)
++
++    ret = 0
++    if 'init' == command:
++        ret = spdk_osd_init(ctx, cephVarLibPath, container_info.image_name)
++        if ret < 0:
++            return ret
++    elif 'deploy' == command:
++        spdk_osd_deploy(ctx, cephVarLibPath, ctx.fsid)
++    elif 'create' == command:
++        ret = spdk_osd_init(ctx, cephVarLibPath, container_info.image_name)
++        if ret < 0:
++            return ret
++        spdk_osd_deploy(ctx, cephVarLibPath, ctx.fsid)
++    else:
++        print('No legal command is provided. use: cephadm spdkosd init/deploy/create')
++    return ret
++
++def spdk_osd_init(ctx, cephVarLibPath, imageName):
++    create_hugepages_file = f"{cephVarLibPath}/tmp/created_hugepage.sh"
++    create_hugepages_file_content = '''
++echo "create hugepages..."
++numa_num=$(lscpu | grep "NUMA node(s)" | awk '{print $3}')
++for ((i=0;i<$numa_num;i++))
++do
++        echo 20480 > /sys/devices/system/node/node$i/hugepages/hugepages-2048kB/nr_hugepages
++done
++
++cat /proc/mounts | grep huge
++'''
++    write_code_to_file(create_hugepages_file, create_hugepages_file_content)
++
++
++    ceph_osd_keyring_file = '{}/tmp/ceph_osd.keyring'.format(cephVarLibPath)
++    commandline="cephadm shell ceph auth get client.bootstrap-osd"
++    out, err, code = call(ctx, commandline.split( ),
++        verbosity=CallVerbosity.DEBUG)
++    ceph_osd_keyring_file_content = out
++    write_code_to_file(ceph_osd_keyring_file, ceph_osd_keyring_file_content)
++
++
++    commandline="cephadm shell ceph config generate-minimal-conf"
++    out, err, code = call(ctx, commandline.split( ),
++        verbosity=CallVerbosity.DEBUG)
++    ceph_global_config = out
++
++    if ctx.c:
++        custom_ext_config = read_file_content(ctx.c)
++        custom_ext_config = custom_ext_config.replace("[global]", "")
++        ceph_osd_config = '''
++{ceph_global_config}
++{custom_ext_config}
++'''.format(ceph_global_config=ceph_global_config, custom_ext_config=custom_ext_config)
++    else :
++        ceph_osd_config = '''
++{ceph_global_config}
++bluestore_block_db_path = ""
++bluestore_block_db_size = 0
++bluestore_block_wal_path = ""
++bluestore_block_wal_size = 0
++'''.format(ceph_global_config=ceph_global_config)
++
++    bdfs_list=getbdfs(ctx, ctx.bstr, ctx.b)
++    only_osd_config = ""
++    loopnum = len(bdfs_list)
++    if loopnum == 0:
++        print('no avaliable device to deploy OSD')
++        return -3
++
++    logger.debug(f"start osd with config: {bdfs_list}")
++    for item in bdfs_list:
++        thisbdfs=item['bdfs']
++        osd_id= item['osd_id']
++        only_osd_config ='''
++{only_osd_config}
++[osd.{osd_id}]
++bluestore_block_path = spdk:trtype:pcie traddr:{thisbdfs}
++
++'''.format(osd_id=osd_id, thisbdfs=thisbdfs, only_osd_config=only_osd_config)
++
++    ceph_osdN_config = f"{ceph_osd_config}{only_osd_config}"
++    write_code_to_file('{}/tmp/ceph.conf.with.osdN.for.create.osd'.format(cephVarLibPath), ceph_osdN_config)
++    write_code_to_file('{}/tmp/ceph.config.for.deploy'.format(cephVarLibPath), ceph_osd_config)
++
++    findOsdNumCommand = 'find /var/lib/ceph/ -path "/var/lib/ceph/*/osd.*/unit.run" | wc -l'
++    out, err, code = run_command_on_host(findOsdNumCommand)
++    existOsdNums = (int(out.strip()) if out.strip().isdigit() else 0) * 20
++    logger.debug(f"start osd delay from {existOsdNums} seconds this time.")
++
++    for i in range(loopnum):
++        thisbdfs=bdfs_list[i]['bdfs']
++        osd_id= bdfs_list[i]['osd_id']
++        print(f"creating osd.{osd_id} with {thisbdfs}...")
++
++        spdk_osd_sh='''
++#!/bin/bash
++osd_id=$1
++new_uuid=$(uuidgen)
++new_key=$(ceph-authtool --gen-print-key)
++echo $new_key > tmp_keyfile
++echo '{{"cephx_secret":"'$new_key'"}}' > sc_tmp.json
++ceph --cluster ceph --name client.bootstrap-osd --keyring /var/lib/ceph/bootstrap-osd/ceph.keyring -i sc_tmp.json osd new $new_uuid $osd_id
++ceph osd tree
++
++ceph-authtool /var/lib/ceph/osd/ceph-$osd_id/keyring --create-keyring --name osd.$osd_id --add-key $new_key
++cat /var/lib/ceph/osd/ceph-$osd_id/keyring
++chown -R ceph:ceph /var/lib/ceph/osd/ceph-$osd_id/keyring
++chown -R ceph:ceph /var/lib/ceph/osd/ceph-$osd_id/
++chown -R ceph:ceph /dev/hugepages
++
++# cat /var/lib/ceph/bootstrap-osd/ceph.keyring
++ceph --cluster ceph --name client.bootstrap-osd --keyring /var/lib/ceph/bootstrap-osd/ceph.keyring mon getmap -o /var/lib/ceph/osd/ceph-$osd_id/activate.monmap
++# monmaptool --print /var/lib/ceph/osd/ceph-$osd_id/activate.monmap
++chown -R ceph:ceph /var/lib/ceph/osd/ceph-$osd_id/activate.monmap
++su - ceph -c "ceph-osd --cluster ceph --osd-objectstore bluestore --mkfs -i $osd_id --monmap /var/lib/ceph/osd/ceph-$osd_id/activate.monmap --keyfile tmp_keyfile --osdspec-affinity x18_bluestore --osd-data /var/lib/ceph/osd/ceph-$osd_id/ --osd-uuid $new_uuid --setuser ceph --setgroup ceph"
++
++# echo "create osd.$osd_id done"
++'''.format(cephVarLibPath=cephVarLibPath, fsid=ctx.fsid)
++        write_code_to_file('{}/tmp/spdk_osd.sh'.format(cephVarLibPath), spdk_osd_sh)
++        this_osd_create_command='''
++mkdir -p /var/lib/ceph/{fsid}/osd.{osd_id}/
++cp {cephVarLibPath}/tmp/ceph.conf.with.osdN.for.create.osd /var/lib/ceph/{fsid}/osd.{osd_id}/config
++
++mkdir -p /mnt/osd_{osd_id}/hugepages2M
++chmod -R 700 /mnt/osd_{osd_id}/hugepages2M
++mount -t hugetlbfs nodev /mnt/osd_{osd_id}/hugepages2M -o pagesize=2M
++
++cephadm shell \
++    -v {cephVarLibPath}/tmp/ceph_osd.keyring:/var/lib/ceph/bootstrap-osd/ceph.keyring:z \
++    -v /mnt/osd_{osd_id}/hugepages2M:/dev/hugepages:z \
++    -v /var/lib/ceph/{fsid}/osd.{osd_id}:/var/lib/ceph/osd/ceph-{osd_id}:z \
++    -v {cephVarLibPath}/tmp:/var/lib/tmp:z \
++    -c {cephVarLibPath}/tmp/ceph.conf.with.osdN.for.create.osd \
++    sh /var/lib/tmp/spdk_osd.sh {osd_id}
++'''.format(cephVarLibPath=cephVarLibPath, fsid=ctx.fsid, osd_id=osd_id)
++        out = subprocess.run(this_osd_create_command,  shell=True, text=True, capture_output=True)
++        if out.returncode != 0:
++            print(f'create osd err! errcode: {out.returncode}')
++            print(f'create osd out content:{out.stdout}')
++            print(f'create osd err content:{out.stderr}')
++            return -2
++        else:
++            logger.debug(out.stderr)
++        logger.debug(f"create osd.{osd_id} with {thisbdfs} done")
++
++        l2f = 'true' if ctx.extra_log == True else 'false' # save log only got --extra-log or -vv
++        delay = (i + 1) * 20 + existOsdNums
++        unit_run='''
++sleep {delay}
++set -e
++# sh {cephVarLibPath}/tmp/created_hugepage.sh
++mkdir -p /mnt/osd_{osd_id}/hugepages2M
++chmod -R 700 /mnt/osd_{osd_id}/hugepages2M
++mount -t hugetlbfs nodev /mnt/osd_{osd_id}/hugepages2M -o pagesize=2M
++
++/usr/bin/podman run --rm --ipc=host --stop-signal=SIGTERM --net=host --entrypoint /usr/bin/ceph-osd \
++    --privileged --group-add=disk --init --name ceph-{fsid}-osd-{osd_id} --pids-limit=-1 \
++    -d --log-driver journald --conmon-pidfile /run/ceph-{fsid}@osd.{osd_id}.service-pid \
++    --cidfile /run/ceph-{fsid}@osd.{osd_id}.service-cid --cgroups=split \
++    -e CONTAINER_IMAGE={spdk_image_withhash} -e NODE_NAME=ceph1 -e CEPH_USE_RANDOM_NONCE=1 \
++    -e TCMALLOC_MAX_TOTAL_THREAD_CACHE_BYTES=134217728 \
++    -e LD_PRELOAD=/usr/lib64/libksal_libc.so \
++    -v /var/run/ceph/{fsid}:/var/run/ceph:z -v /var/log/ceph/{fsid}:/var/log/ceph:z \
++    -v /var/lib/ceph/{fsid}/crash:/var/lib/ceph/crash:z -v /run/systemd/journal:/run/systemd/journal \
++    -v /var/lib/ceph/{fsid}/osd.{osd_id}:/var/lib/ceph/osd/ceph-{osd_id}:z \
++    -v /var/lib/ceph/{fsid}/osd.{osd_id}/config:/etc/ceph/ceph.conf:z \
++    -v /dev:/dev \
++    -v /run/udev:/run/udev -v /sys:/sys -v /run/lvm:/run/lvm -v /run/lock/lvm:/run/lock/lvm \
++    -v /mnt/osd_{osd_id}/hugepages2M:/dev/hugepages \
++    -v /etc/hosts:/etc/hosts:ro -u ceph {spdk_image_withhash} -n osd.{osd_id} -f --setuser ceph --setgroup ceph \
++    --default-log-to-file={l2f} --default-log-to-journald=true --default-log-to-stderr=false  \
++    # --debug-osd=15 --debug-ms=2 --debug-bluestore=15 --debug-bdev=20
++'''.format(cephVarLibPath=cephVarLibPath, fsid=ctx.fsid, spdk_image_withhash=imageName, osd_id=osd_id,  l2f=l2f, delay=delay)
++        write_code_to_file('{}/osd.{}/unit.run'.format(cephVarLibPath, osd_id), unit_run)
++
++        unit_stop='''
++set -e
++! /usr/bin/podman inspect ceph-{fsid}-osd-{osd_id} &>/dev/null || /usr/bin/podman stop ceph-{fsid}-osd-{osd_id}
++umount /mnt/osd_{osd_id}/hugepages2M
++'''.format(fsid=ctx.fsid, spdk_image_withhash=imageName, osd_id=osd_id)
++        write_code_to_file('{}/osd.{}/unit.stop'.format(cephVarLibPath, osd_id), unit_stop)
++        write_code_to_file('{}/osd.{}/unit.poststop'.format(cephVarLibPath, osd_id), unit_stop)
++
++        write_code_to_file('{}/osd.{}/unit.image'.format(cephVarLibPath, osd_id), imageName)
++    print('init done')
++
++    return 0
++
++# get bdfs
++# @params [string]  userInputBdfsStr     string format bdfs
++# @params [string]  configFile           yaml bdfs
++# @returns [array]  example: [{'osd_id': 0, 'bdfs': '0000:82:00.0'}, {'osd_id': 1, 'bdfs': '0000:83:00.0'}]
++def getbdfs(ctx, userInputBdfsStr, configFile):
++    if configFile:
++        if not os.path.exists(configFile):
++            print('the yaml path does not exist!')
++            sys.exit(100006)
++        try:
++            with open(configFile, 'r') as f:
++                out = yaml.safe_load(f)
++                logger.debug(f"yaml load data:{out}")
++                if isinstance(out, list):
++                    validate_bdfs(ctx, out)
++                    return out
++                print(f"YAML file {configFile} data error: the yaml need a list format")
++                sys.exit(100007)
++        except yaml.YAMLError as e:
++            print(f"YAML file {configFile} error: please check your yaml file content!")
++            sys.exit(100001)
++        except Exception as e:
++            print(f"Unexpected error: please check your yaml file content! err:{e}")
++            sys.exit(100005)
++
++    if userInputBdfsStr:
++        arr = userInputBdfsStr.split('-')
++        osd_exist_idx = getOneAvaliableOsdid()
++        res = [{'osd_id': osd_exist_idx + i, 'bdfs': part} for i, part in enumerate(arr)]
++        validate_bdfs(ctx, res)
++        return res
++
++    command = "cephadm shell sh /var/lib/ceph/spdk_lib/scripts/setup.sh status 2>/dev/null | grep 'uio' | awk '{print $2}'"
++    out = subprocess.run(command,  shell=True, text=True, capture_output=True)
++    bdfs = [line.strip() for line in out.stdout.strip().splitlines()]
++    osd_exist_idx = getOneAvaliableOsdid()
++    res = [{'osd_id': osd_exist_idx + i, 'bdfs': part} for i, part in enumerate(bdfs)]
++    validate_bdfs(ctx, res)
++    return res
++
++def validate_bdfs(ctx, bdfsarr):
++    existOsdIds = []
++    avaliableDevices = []
++
++    getOsdIdsCommand = "cephadm shell ceph osd tree 2>/dev/null | grep 'osd.'|awk '{print $1}'"
++    getAvaliDevCommand = "cephadm shell sh /var/lib/ceph/spdk_lib/scripts/setup.sh status 2>/dev/null | grep 'uio' | awk '{print $2}'"
++
++    out, err, code = run_command_on_host(getOsdIdsCommand)
++    existOsdIds = [int(line.strip()) for line in out.strip().splitlines()]
++
++    out, err, code = run_command_on_host(getAvaliDevCommand)
++    avaliableDevices = [line.strip() for line in out.strip().splitlines()]
++
++    logger.debug(f'validate_bdfs:data in vailding is {bdfsarr}')
++    logger.debug(f'validate_bdfs:existOsdIds is {existOsdIds}')
++    logger.debug(f'validate_bdfs:avaliableDevices is {avaliableDevices}')
++
++    if len(existOsdIds) > 0:
++        for osdid in existOsdIds:
++            getOsdDeviceCommand = "ls -l /var/lib/ceph/{fsid}/osd.{osdid}/block | awk -F'traddr:' '{{print $2}}' | awk '{{print $1}}' | tr -d '\n'".format(fsid=ctx.fsid, osdid=osdid)
++            out, err, code = run_command_on_host(getOsdDeviceCommand)
++            logger.debug(f'validate_bdfs:device {out} is used by osd.{osdid}')
++            if out and out.strip():
++                avaliableDevices = [item for item in avaliableDevices if out not in item]
++        logger.debug(f'validate_bdfs:avaliableDevices except osd used is {avaliableDevices}')
++
++    for item in bdfsarr:
++        if 'bdfs' not in item or 'osd_id' not in item:
++            print(f"yaml format error: Both 'osd_id' and 'bdfs' should  be provided at same time in yaml content!")
++            sys.exit(10014)
++        this_bdfs=item['bdfs']
++        this_osd_id= item['osd_id']
++        if this_osd_id in existOsdIds:
++            print(f"osd id error: osd.{this_osd_id} has been used! please change yaml content!")
++            sys.exit(10012)
++        if this_bdfs not in avaliableDevices:
++            print(f"bdfs error: device {this_bdfs} did not driver by uio or has been used. can not choose this device for deploy!")
++            sys.exit(10013)
++
++    return 0
++
++def getOneAvaliableOsdid()->int:
++    command = "cephadm shell ceph osd tree 2>/dev/null | grep 'osd.'|awk '{print $1}'"
++    out = subprocess.run(command,  shell=True, text=True, capture_output=True)
++    if out.returncode != 0:
++        # raise RuntimeError("Can not get OSD IDs.")
++        return 0
++    osd_ids = [int(line.strip()) for line in out.stdout.strip().splitlines()]
++    if not osd_ids:
++        return 0
++    if len(osd_ids) == 0:
++        return 0
++    osd_ids.sort()
++    return osd_ids[-1] + 1
++
++def write_code_to_file(filepath, code):
++    try:
++        os.makedirs(os.path.dirname(filepath + '.new'), exist_ok=True)
++        with open(filepath + '.new', 'w') as f:
++            f.write(code)
++            os.rename(filepath + '.new',
++                filepath)
++    except PermissionError:
++        print(f"Error: Permission denied. please check the permission on the '{filepath}' path.")
++        sys.exit(100021)
++    except IOError as e:
++        print(f"Error writing file '{filepath}': {e}")
++        sys.exit(100022)
++    except Exception as e:
++        print(f"Unexpected error when writing file '{filepath}': {e}")
++        sys.exit(100023)
++    return 0
++
++def read_file_content(filepath: str) -> str:
++    try:
++        with open(filepath, 'r') as file:
++            content = file.read()
++        return content
++    except FileNotFoundError:
++        print(f"Error: The file at path '{filepath}' was not found.")
++        sys.exit(100011)
++    except IOError as e:
++        print(f"Error reading file '{filepath}': {e}")
++        sys.exit(100012)
++    except Exception as e:
++        print(f"Unexpected error when reading file '{filepath}': {e}")
++        sys.exit(100013)
++    return ""
++
++def spdk_osd_deploy(ctx,cephVarLibPath ,fsid):
++    isExist = False
++    if os.path.exists(cephVarLibPath):
++        for i in os.listdir(cephVarLibPath):
++            if '.' in i and  'osd' in i:
++                isExist = True
++                name = i
++                (daemon_type, daemon_id) = i.split('.', 1)
++                unit_name = get_unit_name(fsid,
++                                            daemon_type,
++                                            daemon_id)
++                print(f'start service: {unit_name}')
++                call_throws(ctx, ['systemctl', 'enable', unit_name])
++                run_command_on_host(f'systemctl start {unit_name}', '', True)
++
++    if not isExist:
++        print('no osd service to deploy! please exec `cephadm spdkosd init` first!')
++        return -1
++
++    refreshStatusCommand = 'cephadm shell ceph orch ls --refresh'
++    out, err, code = run_command_on_host(refreshStatusCommand)
++    if code != 0:
++        print('orch ls refresh error:', err)
++
++    print('All OSDs above are scheduled to start!')
++    return 0
++
++def test_run_command_on_host():
++    testcommand = '''
++echo "this command is from other host" > /home/tmp.log
++echo "this command is to local host" >> /home/tmp.log
++'''
++    testcommand = 'cephadm shell ceph auth get client.bootstrap-osd'
++    out, err, code = run_command_on_host(testcommand)
++    if code != 0:
++        print('run_command_on_host error:', err)
++    else:
++        print('run_command_on_host done:', out)
++
++    return 0
++
++# exec command on target host
++# @params [str]  command:  shell command
++# @params [str]  hostname: which host to run command. default is '' means localhost
++# @params [out,err,code]   code == 0 means success
++def run_command_on_host(command, hostname = '', async_mode: bool = False):
++    this_osd_command = command
++    if hostname:
++        this_osd_command = '''
++ssh -T root@{hostname} << EOF
++{command}
++EOF
++'''.format(hostname=hostname, command=command)
++    if async_mode:
++        process = subprocess.Popen(this_osd_command, shell=True, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
++        return process
++    else:
++        out = subprocess.run(this_osd_command,  shell=True, text=True, capture_output=True)
++        return out.stdout,out.stderr,out.returncode
++
++
+ def with_units_to_int(v: str) -> int:
+     if v.endswith('iB'):
+         v = v[:-2]
+@@ -8989,6 +9385,31 @@ def _get_parser():
+         'inspect-image', help='inspect local container image')
+     parser_inspect_image.set_defaults(func=command_inspect_image)
+ 
++    parser_spdkosd = subparsers.add_parser(
++        'spdkosd', help='create spdk osd daemon instances on this host')
++    parser_spdkosd.set_defaults(func=create_spdk_osd)
++    parser_spdkosd.add_argument(
++        '--fsid',
++        help='choose a cluster')
++    parser_spdkosd.add_argument(
++        '-vv', '--extra-log',
++        action='store_true',
++        default=False,
++        help='save extra log to log file. default: False. view extra log content in /var/log/ceph/{fsid}/ceph-osd.{osdid}.log')
++    parser_spdkosd.add_argument(
++        '--c',
++        help='custom config file for spdk to start ceph. like /etc/ceph/ceph.conf')
++    parser_spdkosd.add_argument(
++        '--bstr',
++        help='devices choosed to deploy osd. use - to split each config. like 0000:81:00.0-0000:82:00.0')
++    parser_spdkosd.add_argument(
++        '--b',
++        help='devices choosed to deploy osd config path. like /home/osd.yaml. --b is preferred when both --b and --bstr are provided.')
++    parser_spdkosd.add_argument(
++        'command',
++        nargs=argparse.REMAINDER,
++        help='deployment action: init deploy create. e.g., cephadm spdkosd --b osd.yaml create')
++
+     parser_ls = subparsers.add_parser(
+         'ls', help='list daemon instances on this host')
+     parser_ls.set_defaults(func=command_ls)
+diff --git a/src/common/Finisher.h b/src/common/Finisher.h
+index f1060b0e4..4cabf2ba4 100644
+--- a/src/common/Finisher.h
++++ b/src/common/Finisher.h
+@@ -66,11 +66,13 @@ class Finisher {
+  public:
+   /// Add a context to complete, optionally specifying a parameter for the complete function.
+   void queue(Context *c, int r = 0) {
+-    std::unique_lock ul(finisher_lock);
+-    bool was_empty = finisher_queue.empty();
+-    finisher_queue.push_back(std::make_pair(c, r));
+-    if (was_empty) {
+-      finisher_cond.notify_one();
++    {
++      std::unique_lock ul(finisher_lock);
++      const bool should_notify = finisher_queue.empty() && !finisher_running;
++      finisher_queue.push_back(std::make_pair(c, r));
++      if (should_notify) {
++        finisher_cond.notify_one();
++      }
+     }
+     if (logger)
+       logger->inc(l_finisher_queue_len);
+@@ -79,43 +81,46 @@ class Finisher {
+   void queue(std::list<Context*>& ls) {
+     {
+       std::unique_lock ul(finisher_lock);
+-      if (finisher_queue.empty()) {
+-	finisher_cond.notify_all();
+-      }
++      const bool should_notify = finisher_queue.empty() && !finisher_running;
+       for (auto i : ls) {
+ 	finisher_queue.push_back(std::make_pair(i, 0));
+       }
+-      if (logger)
+-	logger->inc(l_finisher_queue_len, ls.size());
++      if (should_notify) {
++	finisher_cond.notify_one();
++      }
+     }
++    if (logger)
++      logger->inc(l_finisher_queue_len, ls.size());
+     ls.clear();
+   }
+   void queue(std::deque<Context*>& ls) {
+     {
+       std::unique_lock ul(finisher_lock);
+-      if (finisher_queue.empty()) {
+-	finisher_cond.notify_all();
+-      }
++      const bool should_notify = finisher_queue.empty() && !finisher_running;
+       for (auto i : ls) {
+ 	finisher_queue.push_back(std::make_pair(i, 0));
+       }
+-      if (logger)
+-	logger->inc(l_finisher_queue_len, ls.size());
++      if (should_notify) {
++	finisher_cond.notify_one();
++      }
+     }
++    if (logger)
++      logger->inc(l_finisher_queue_len, ls.size());
+     ls.clear();
+   }
+   void queue(std::vector<Context*>& ls) {
+     {
+       std::unique_lock ul(finisher_lock);
+-      if (finisher_queue.empty()) {
+-	finisher_cond.notify_all();
+-      }
++      const bool should_notify = finisher_queue.empty() && !finisher_running;
+       for (auto i : ls) {
+ 	finisher_queue.push_back(std::make_pair(i, 0));
+       }
+-      if (logger)
+-	logger->inc(l_finisher_queue_len, ls.size());
++      if (should_notify) {
++	finisher_cond.notify_one();
++      }
+     }
++    if (logger)
++      logger->inc(l_finisher_queue_len, ls.size());
+     ls.clear();
+   }
+ 
+diff --git a/src/common/HeartbeatMap.cc b/src/common/HeartbeatMap.cc
+index 544427092..7b0fbf134 100644
+--- a/src/common/HeartbeatMap.cc
++++ b/src/common/HeartbeatMap.cc
+@@ -66,10 +66,15 @@ void HeartbeatMap::remove_worker(const heartbeat_handle_d *h)
+   delete h;
+ }
+ 
+-bool HeartbeatMap::_check(const heartbeat_handle_d *h, const char *who,
++bool HeartbeatMap::_check(heartbeat_handle_d *h, const char *who,
+ 			  ceph::coarse_mono_time now)
+ {
+   bool healthy = true;
++
++  if (m_cct->ndelete.load() > 0) {
++    h->timeout.store(clock::zero(), std::memory_order_relaxed);
++    h->suicide_timeout.store(clock::zero(), std::memory_order_relaxed);
++  }
+   if (auto was = h->timeout.load(std::memory_order_relaxed);
+       !clock::is_zero(was) && was < now) {
+     ldout(m_cct, 1) << who << " '" << h->name << "'"
+diff --git a/src/common/HeartbeatMap.h b/src/common/HeartbeatMap.h
+index 6f486b21c..94dbc5528 100644
+--- a/src/common/HeartbeatMap.h
++++ b/src/common/HeartbeatMap.h
+@@ -91,7 +91,7 @@ class HeartbeatMap {
+   std::atomic<unsigned> m_unhealthy_workers = { 0 };
+   std::atomic<unsigned> m_total_workers = { 0 };
+ 
+-  bool _check(const heartbeat_handle_d *h, const char *who,
++  bool _check(heartbeat_handle_d *h, const char *who,
+ 	      ceph::coarse_mono_time now);
+ };
+ 
+diff --git a/src/common/ceph_context.cc b/src/common/ceph_context.cc
+index f902e842d..51b442370 100644
+--- a/src/common/ceph_context.cc
++++ b/src/common/ceph_context.cc
+@@ -689,6 +689,7 @@ CephContext::CephContext(uint32_t module_type_,
+                          enum code_environment_t code_env,
+                          int init_flags_)
+   : nref(1),
++    ndelete(0),
+     _conf{code_env == CODE_ENVIRONMENT_DAEMON},
+     _log(NULL),
+     _module_type(module_type_),
+diff --git a/src/common/ceph_context.h b/src/common/ceph_context.h
+index dee5157ce..d8a14418e 100644
+--- a/src/common/ceph_context.h
++++ b/src/common/ceph_context.h
+@@ -131,6 +131,7 @@ public:
+     ++nref;
+     return this;
+   }
++  std::atomic<int> ndelete;
+   void put();
+ 
+   ConfigProxy _conf;
+diff --git a/src/common/crc32c_aarch64.c b/src/common/crc32c_aarch64.c
+index 99e588399..555ababfd 100644
+--- a/src/common/crc32c_aarch64.c
++++ b/src/common/crc32c_aarch64.c
+@@ -89,7 +89,168 @@ asm(".arch_extension crypto");
+ 	PREF4X64L2((PREF_OFFSET), 8) \
+ 	PREF4X64L2((PREF_OFFSET), 12)
+ 
++#ifdef HAVE_ARMV8_CRC_CRYPTO_INTRINSICS
++#include <stdint.h>
++#include <arm_acle.h>
++#include <arm_neon.h>
++
++#define CACHELINE_SIZE 64
++#define PREFETCH_NORMAL_LENGTH 1024
++#define PREFETCH_LONG_LENGTH 2048
++#define ONE_CYCLE_LEN 256
++
++uint32_t ceph_crc32c_aarch64(uint32_t crc, unsigned char const *buffer, unsigned len)
++{
++    uint8_t *pos = buffer;
++    if (buffer) {
++        while (len >= ONE_CYCLE_LEN) {
++            __builtin_prefetch(pos + PREFETCH_NORMAL_LENGTH, 0, 0);
++            __builtin_prefetch(pos + PREFETCH_LONG_LENGTH, 0, 2);
++            __builtin_prefetch(pos + PREFETCH_NORMAL_LENGTH + CACHELINE_SIZE, 0, 0);
++            __builtin_prefetch(pos + PREFETCH_LONG_LENGTH + CACHELINE_SIZE, 0, 2);
++            __builtin_prefetch(pos + PREFETCH_NORMAL_LENGTH + CACHELINE_SIZE * 2, 0, 0);
++            __builtin_prefetch(pos + PREFETCH_LONG_LENGTH + CACHELINE_SIZE * 2, 0, 2);
++            __builtin_prefetch(pos + PREFETCH_NORMAL_LENGTH + CACHELINE_SIZE * 3, 0, 0);
++            __builtin_prefetch(pos + PREFETCH_LONG_LENGTH + CACHELINE_SIZE * 3, 0, 2);
++            crc = __crc32cd(crc, *(const uint64_t *)(pos + CACHELINE_SIZE * 0 + 8 * 0));
++            crc = __crc32cd(crc, *(const uint64_t *)(pos + CACHELINE_SIZE * 0 + 8 * 1));
++            crc = __crc32cd(crc, *(const uint64_t *)(pos + CACHELINE_SIZE * 0 + 8 * 2));
++            crc = __crc32cd(crc, *(const uint64_t *)(pos + CACHELINE_SIZE * 0 + 8 * 3));
++            crc = __crc32cd(crc, *(const uint64_t *)(pos + CACHELINE_SIZE * 0 + 8 * 4));
++            crc = __crc32cd(crc, *(const uint64_t *)(pos + CACHELINE_SIZE * 0 + 8 * 5));
++            crc = __crc32cd(crc, *(const uint64_t *)(pos + CACHELINE_SIZE * 0 + 8 * 6));
++            crc = __crc32cd(crc, *(const uint64_t *)(pos + CACHELINE_SIZE * 0 + 8 * 7));
++
++            crc = __crc32cd(crc, *(const uint64_t *)(pos + CACHELINE_SIZE * 1 + 8 * 0));
++            crc = __crc32cd(crc, *(const uint64_t *)(pos + CACHELINE_SIZE * 1 + 8 * 1));
++            crc = __crc32cd(crc, *(const uint64_t *)(pos + CACHELINE_SIZE * 1 + 8 * 2));
++            crc = __crc32cd(crc, *(const uint64_t *)(pos + CACHELINE_SIZE * 1 + 8 * 3));
++            crc = __crc32cd(crc, *(const uint64_t *)(pos + CACHELINE_SIZE * 1 + 8 * 4));
++            crc = __crc32cd(crc, *(const uint64_t *)(pos + CACHELINE_SIZE * 1 + 8 * 5));
++            crc = __crc32cd(crc, *(const uint64_t *)(pos + CACHELINE_SIZE * 1 + 8 * 6));
++            crc = __crc32cd(crc, *(const uint64_t *)(pos + CACHELINE_SIZE * 1 + 8 * 7));
++
++            crc = __crc32cd(crc, *(const uint64_t *)(pos + CACHELINE_SIZE * 2 + 8 * 0));
++            crc = __crc32cd(crc, *(const uint64_t *)(pos + CACHELINE_SIZE * 2 + 8 * 1));
++            crc = __crc32cd(crc, *(const uint64_t *)(pos + CACHELINE_SIZE * 2 + 8 * 2));
++            crc = __crc32cd(crc, *(const uint64_t *)(pos + CACHELINE_SIZE * 2 + 8 * 3));
++            crc = __crc32cd(crc, *(const uint64_t *)(pos + CACHELINE_SIZE * 2 + 8 * 4));
++            crc = __crc32cd(crc, *(const uint64_t *)(pos + CACHELINE_SIZE * 2 + 8 * 5));
++            crc = __crc32cd(crc, *(const uint64_t *)(pos + CACHELINE_SIZE * 2 + 8 * 6));
++            crc = __crc32cd(crc, *(const uint64_t *)(pos + CACHELINE_SIZE * 2 + 8 * 7));
++
++            crc = __crc32cd(crc, *(const uint64_t *)(pos + CACHELINE_SIZE * 3 + 8 * 0));
++            crc = __crc32cd(crc, *(const uint64_t *)(pos + CACHELINE_SIZE * 3 + 8 * 1));
++            crc = __crc32cd(crc, *(const uint64_t *)(pos + CACHELINE_SIZE * 3 + 8 * 2));
++            crc = __crc32cd(crc, *(const uint64_t *)(pos + CACHELINE_SIZE * 3 + 8 * 3));
++            crc = __crc32cd(crc, *(const uint64_t *)(pos + CACHELINE_SIZE * 3 + 8 * 4));
++            crc = __crc32cd(crc, *(const uint64_t *)(pos + CACHELINE_SIZE * 3 + 8 * 5));
++            crc = __crc32cd(crc, *(const uint64_t *)(pos + CACHELINE_SIZE * 3 + 8 * 6));
++            crc = __crc32cd(crc, *(const uint64_t *)(pos + CACHELINE_SIZE * 3 + 8 * 7));
++
++            pos += ONE_CYCLE_LEN;
++            len -= ONE_CYCLE_LEN;
++        }
++
++        while (len >= 16) {
++            crc = __crc32cd(crc, *(const uint64_t *)(pos));
++            crc = __crc32cd(crc, *(const uint64_t *)(pos + 8));
++            pos += 16;
++            len -= 16;
++        }
++
++        while (len >= 8) {
++            crc = __crc32cd(crc, *(const uint64_t *)(pos));
++            pos += 8;
++            len -= 8;
++        }
++
++        if (len >= 4) {
++            crc = __crc32cw(crc, *(uint32_t *)pos);
++            pos += 4;
++            len -= 4;
++        }
++
++        if (len >= 2) {
++            crc = __crc32ch(crc, *(uint16_t *)pos);
++            pos += 2;
++            len -= 2;
++        }
++
++        if (len == 1) {
++            crc = __crc32cb(crc, *pos);
++        }
++    } else {
++        int64_t length = len;
++    	uint32_t crc0, crc1, crc2;
++#ifdef HAVE_ARMV8_CRYPTO
++	        if (ceph_arch_aarch64_pmull) {
++#ifdef HAVE_ARMV8_CRC_CRYPTO_INTRINSICS
++		const poly64_t k1 = 0xe417f38a;
++		uint64_t t0;
++
++		while ((length -= 1024) >= 0) {
++			crc0 = __crc32cd(crc, 0);
++
++			CRC32C7X3X8_ZERO;
++			CRC32C7X3X8_ZERO;
++			CRC32C7X3X8_ZERO;
++			CRC32C7X3X8_ZERO;
++			CRC32C7X3X8_ZERO;
++			CRC32C7X3X8_ZERO;
++
++			/* Merge crc0 into crc: crc0 multiply by K1 */
++
++			t0 = (uint64_t)vmull_p64(crc0, k1);
++			crc = __crc32cd(0, t0);
++		}
++#else /* !HAVE_ARMV8_CRC_CRYPTO_INTRINSICS */
++		__asm__("mov    x16,            #0xf38a         \n\t"
++			"movk   x16,            #0xe417, lsl 16 \n\t"
++			"mov    v1.2d[0],       x16             \n\t"
++			:::"x16");
++
++		while ((length -= 1024) >= 0) {
++			__asm__("crc32cx %w[c0], %w[c], xzr\n\t"
++				:[c0]"=r"(crc0):[c]"r"(crc));
++
++			CRC32C7X3X8_ZERO;
++			CRC32C7X3X8_ZERO;
++			CRC32C7X3X8_ZERO;
++			CRC32C7X3X8_ZERO;
++			CRC32C7X3X8_ZERO;
++			CRC32C7X3X8_ZERO;
++
++			__asm__("mov            v3.2d[0],       %x[c0]          \n\t"
++				"pmull          v3.1q,          v3.1d,  v1.1d   \n\t"
++				"mov            %x[c0],         v3.2d[0]        \n\t"
++				"crc32cx        %w[c],          wzr,    %x[c0]  \n\t"
++				:[c]"=r"(crc)
++				:[c0]"r"(crc0));
++		}
++#endif /* HAVE_ARMV8_CRC_CRYPTO_INTRINSICS */
+ 
++		if(!(length += 1024))
++			return crc;
++	        }
++#endif /* HAVE_ARMV8_CRYPTO */
++		while ((length -= sizeof(uint64_t)) >= 0)
++			CRC32CX(crc, 0);
++
++		/* The following is more efficient than the straight loop */
++		if (length & sizeof(uint32_t))
++			CRC32CW(crc, 0);
++
++		if (length & sizeof(uint16_t))
++			CRC32CH(crc, 0);
++
++		if (length & sizeof(uint8_t))
++			CRC32CB(crc, 0);
++    }
++
++    return crc;
++}
++#else
+ uint32_t ceph_crc32c_aarch64(uint32_t crc, unsigned char const *buffer, unsigned len)
+ {
+ 	int64_t length = len;
+@@ -272,3 +433,4 @@ uint32_t ceph_crc32c_aarch64(uint32_t crc, unsigned char const *buffer, unsigned
+ 	}
+ 	return crc;
+ }
++#endif
+diff --git a/src/common/options/global.yaml.in b/src/common/options/global.yaml.in
+index 855da075b..8f4bdecfe 100644
+--- a/src/common/options/global.yaml.in
++++ b/src/common/options/global.yaml.in
+@@ -1314,6 +1314,18 @@ options:
+   min: 1
+   max: 24
+   with_legacy: true
++- name: ms_async_op_threads_polling
++  type: bool
++  level: advanced
++  desc: Threadpool polling switch for AsyncMessenger (ms_type=async)
++  default: false
++  with_legacy: true
++- name: ms_async_op_threads_adaptive_polling
++  type: bool
++  level: advanced
++  desc: Threadpool polling model for AsyncMessenger (ms_type=async)
++  default: false
++  with_legacy: true
+ - name: ms_async_reap_threshold
+   type: uint
+   level: dev
+@@ -3974,6 +3986,16 @@ options:
+   level: advanced
+   default: false
+   with_legacy: true
++- name: bluestore_kv_sync_thread_polling
++  type: bool
++  level: advanced
++  default: false
++  with_legacy: true
++- name: bluestore_kv_finalize_thread_polling
++  type: bool
++  level: advanced
++  default: false
++  with_legacy: true
+ - name: bdev_debug_inflight_ios
+   type: bool
+   level: dev
+diff --git a/src/msg/async/Event.cc b/src/msg/async/Event.cc
+index 10ce34d91..1de03020e 100644
+--- a/src/msg/async/Event.cc
++++ b/src/msg/async/Event.cc
+@@ -409,7 +409,7 @@ int EventCenter::process_events(unsigned timeout_microseconds,  ceph::timespan *
+   }
+ 
+   bool blocking = pollers.empty() && !external_num_events.load();
+-  if (!blocking)
++  if (!driver->need_wakeup() || !blocking)
+     timeout_microseconds = 0;
+   tv.tv_sec = timeout_microseconds / 1000000;
+   tv.tv_usec = timeout_microseconds % 1000000;
+diff --git a/src/msg/async/Event.h b/src/msg/async/Event.h
+index 1812db3cd..f4934d521 100644
+--- a/src/msg/async/Event.h
++++ b/src/msg/async/Event.h
+@@ -152,6 +152,7 @@ class EventCenter {
+   };
+ 
+  private:
++  friend class NetworkStack;
+   CephContext *cct;
+   std::string type;
+   int nevent;
+diff --git a/src/msg/async/EventEpoll.h b/src/msg/async/EventEpoll.h
+index 454ecbc34..1797f7f24 100644
+--- a/src/msg/async/EventEpoll.h
++++ b/src/msg/async/EventEpoll.h
+@@ -27,9 +27,12 @@ class EpollDriver : public EventDriver {
+   struct epoll_event *events;
+   CephContext *cct;
+   int nevent;
++  bool is_polling;
+ 
+  public:
+-  explicit EpollDriver(CephContext *c): epfd(-1), events(NULL), cct(c), nevent(0) {}
++  explicit EpollDriver(CephContext *c): epfd(-1), events(NULL), cct(c), nevent(0) {
++    is_polling = cct->_conf->ms_async_op_threads_polling;
++  }
+   ~EpollDriver() override {
+     if (epfd != -1)
+       close(epfd);
+@@ -44,6 +47,13 @@ class EpollDriver : public EventDriver {
+   int resize_events(int newsize) override;
+   int event_wait(std::vector<FiredFileEvent> &fired_events,
+ 		 struct timeval *tp) override;
++  bool need_wakeup() override {
++    if (is_polling) {
++      return false;
++    }
++
++    return true;
++  }
+ };
+ 
+ #endif
+diff --git a/src/msg/async/ProtocolV2.cc b/src/msg/async/ProtocolV2.cc
+index c756b9991..c02da1c6b 100644
+--- a/src/msg/async/ProtocolV2.cc
++++ b/src/msg/async/ProtocolV2.cc
+@@ -456,7 +456,9 @@ void ProtocolV2::send_message(Message *m) {
+     ldout(cct, 5) << __func__ << " enqueueing message m=" << m
+                   << " type=" << m->get_type() << " " << *m << dendl;
+     m->queue_start = ceph::mono_clock::now();
++#if defined(WITH_EVENTTRACE)
+     m->trace.event("async enqueueing message");
++#endif
+     out_queue[m->get_priority()].emplace_back(
+       out_queue_entry_t{is_prepared, m});
+     ldout(cct, 15) << __func__ << " inline write is denied, reschedule m=" << m
+@@ -554,7 +556,9 @@ ssize_t ProtocolV2::write_message(Message *m, bool more) {
+   ldout(cct, 5) << __func__ << " sending message m=" << m
+                 << " seq=" << m->get_seq() << " " << *m << dendl;
+ 
++#if defined(WITH_EVENTTRACE)
+   m->trace.event("async writing message");
++#endif
+   ldout(cct, 20) << __func__ << " sending m=" << m << " seq=" << m->get_seq()
+                  << " src=" << entity_name_t(messenger->get_myname())
+                  << " off=" << header2.data_off
+diff --git a/src/msg/async/Stack.cc b/src/msg/async/Stack.cc
+index 661709444..ff6c7fcff 100644
+--- a/src/msg/async/Stack.cc
++++ b/src/msg/async/Stack.cc
+@@ -50,13 +50,12 @@ std::function<void ()> NetworkStack::add_thread(Worker* w)
+         ldout(cct, 30) << __func__ << " calling event process" << dendl;
+ 
+         ceph::timespan dur;
+-        int r = w->center.process_events(EventMaxWaitUs, &dur);
++        int r = w->center.process_events(EventMaxWaitUs, nullptr);
+         if (r < 0) {
+           ldout(cct, 20) << __func__ << " process events failed: "
+                          << cpp_strerror(errno) << dendl;
+           // TODO do something?
+         }
+-        w->perf_logger->tinc(l_msgr_running_total_time, dur);
+       }
+       w->reset();
+       w->destroy();
+diff --git a/src/os/bluestore/BlueStore.cc b/src/os/bluestore/BlueStore.cc
+index ebf70f76e..aee46f5d8 100644
+--- a/src/os/bluestore/BlueStore.cc
++++ b/src/os/bluestore/BlueStore.cc
+@@ -13238,6 +13238,7 @@ void BlueStore::_kv_sync_thread()
+   std::unique_lock l{kv_lock};
+   ceph_assert(!kv_sync_started);
+   kv_sync_started = true;
++  volatile bool is_polling = cct->_conf->bluestore_kv_sync_thread_polling;
+   kv_cond.notify_all();
+ 
+   auto t0 = mono_clock::now();
+@@ -13487,7 +13488,12 @@ void BlueStore::_kv_sync_thread()
+ 	  dur,
+ 	  cct->_conf->bluestore_log_op_age);
+       }
+-
++      
++      while (is_polling && !kv_stop && kv_queue.empty() &&
++             ((deferred_done_queue.empty() && deferred_stable_queue.empty()) ||
++             !deferred_aggressive)) {
++      }
++      
+       l.lock();
+       // previously deferred "done" are now "stable" by virtue of this
+       // commit cycle.
+@@ -13506,6 +13512,7 @@ void BlueStore::_kv_finalize_thread()
+   std::unique_lock l(kv_finalize_lock);
+   ceph_assert(!kv_finalize_started);
+   kv_finalize_started = true;
++  volatile bool is_polling = cct->_conf->bluestore_kv_finalize_thread_polling;
+   kv_finalize_cond.notify_all();
+   while (true) {
+     ceph_assert(kv_committed.empty());
+@@ -13563,6 +13570,10 @@ void BlueStore::_kv_finalize_thread()
+ 	mono_clock::now() - start,
+ 	cct->_conf->bluestore_log_op_age);
+ 
++      while (is_polling && !kv_finalize_stop && kv_committing_to_finalize.empty() &&
++             deferred_stable_to_finalize.empty()) {
++      }
++
+       l.lock();
+     }
+   }
+diff --git a/src/os/bluestore/BlueStore.h b/src/os/bluestore/BlueStore.h
+index 02a3bd51c..94218f8d8 100644
+--- a/src/os/bluestore/BlueStore.h
++++ b/src/os/bluestore/BlueStore.h
+@@ -2246,8 +2246,8 @@ private:
+   ceph::condition_variable kv_cond;
+   bool _kv_only = false;
+   bool kv_sync_started = false;
+-  bool kv_stop = false;
+-  bool kv_finalize_started = false;
++  volatile bool kv_stop = false;
++  volatile bool kv_finalize_started = false;
+   bool kv_finalize_stop = false;
+   std::deque<TransContext*> kv_queue;             ///< ready, already submitted
+   std::deque<TransContext*> kv_queue_unsubmitted; ///< ready, need submit by kv thread
+diff --git a/src/osd/OSD.cc b/src/osd/OSD.cc
+index b6dc2a2b8..7b092ca30 100644
+--- a/src/osd/OSD.cc
++++ b/src/osd/OSD.cc
+@@ -9915,10 +9915,11 @@ void OSD::enqueue_op(spg_t pg, OpRequestRef&& op, epoch_t epoch)
+ 	   << " latency " << latency
+ 	   << " epoch " << epoch
+ 	   << " " << *(op->get_req()) << dendl;
++#if defined(WITH_EVENTTRACE)
+   op->osd_trace.event("enqueue op");
+   op->osd_trace.keyval("priority", priority);
+   op->osd_trace.keyval("cost", cost);
+-
++#endif
+   auto enqueue_span = tracing::osd::tracer.add_span(__func__, op->osd_parent_span);
+   enqueue_span->AddEvent(__func__, {
+     {"priority", priority},
+@@ -9928,7 +9929,9 @@ void OSD::enqueue_op(spg_t pg, OpRequestRef&& op, epoch_t epoch)
+     {"type", type}
+     });
+ 
++#if defined(WITH_EVENTTRACE)
+   op->mark_queued_for_pg();
++#endif
+   logger->tinc(l_osd_op_before_queue_op_lat, latency);
+   if (PGRecoveryMsg::is_recovery_msg(op)) {
+     op_shardedwq.queue(
+@@ -9987,8 +9990,10 @@ void OSD::dequeue_op(
+   if (pg->is_deleting())
+     return;
+ 
++#if defined(WITH_EVENTTRACE)
+   op->mark_reached_pg();
+   op->osd_trace.event("dequeue_op");
++#endif
+ 
+   pg->do_request(op, handle);
+ 
+diff --git a/src/osd/PeeringState.cc b/src/osd/PeeringState.cc
+index f66983aab..da00f3ef2 100644
+--- a/src/osd/PeeringState.cc
++++ b/src/osd/PeeringState.cc
+@@ -6652,6 +6652,7 @@ PeeringState::Deleting::Deleting(my_context ctx)
+   context< PeeringMachine >().log_enter(state_name);
+ 
+   DECLARE_LOCALS;
++  context< PeeringMachine >().cct->ndelete.fetch_add(1);
+   ps->deleting = true;
+   ObjectStore::Transaction &t = context<PeeringMachine>().get_cur_transaction();
+ 
+@@ -6683,6 +6684,7 @@ void PeeringState::Deleting::exit()
+   context< PeeringMachine >().log_exit(state_name, enter_time);
+   DECLARE_LOCALS;
+   ps->deleting = false;
++  context< PeeringMachine >().cct->ndelete.fetch_sub(1);
+   pl->cancel_local_background_io_reservation();
+ }
+ 
+diff --git a/src/osd/PrimaryLogPG.cc b/src/osd/PrimaryLogPG.cc
+index f6b1d424a..a21b91fd2 100644
+--- a/src/osd/PrimaryLogPG.cc
++++ b/src/osd/PrimaryLogPG.cc
+@@ -1798,11 +1798,12 @@ void PrimaryLogPG::do_request(
+   OpRequestRef& op,
+   ThreadPool::TPHandle &handle)
+ {
++#if defined(WITH_EVENTTRACE)
+   if (op->osd_trace) {
+     op->pg_trace.init("pg op", &trace_endpoint, &op->osd_trace);
+     op->pg_trace.event("do request");
+   }
+-
++#endif
+   [[maybe_unused]] auto span = tracing::osd::tracer.add_span(__func__, op->osd_parent_span);
+ 
+ // make sure we have a new enough map
+@@ -2491,9 +2492,9 @@ void PrimaryLogPG::do_op(OpRequestRef& op)
+     reply_ctx(ctx, -ENOENT);
+     return;
+   }
+-
++#if defined(WITH_EVENTTRACE)
+   op->mark_started();
+-
++#endif
+   execute_ctx(ctx);
+   utime_t prepare_latency = ceph_clock_now();
+   prepare_latency -= op->get_dequeued_time();
+diff --git a/src/osd/ReplicatedBackend.cc b/src/osd/ReplicatedBackend.cc
+index 718f526c4..7231d4382 100644
+--- a/src/osd/ReplicatedBackend.cc
++++ b/src/osd/ReplicatedBackend.cc
+@@ -564,10 +564,12 @@ void ReplicatedBackend::op_commit(const ceph::ref_t<InProgressOp>& op)
+   FUNCTRACE(cct);
+   OID_EVENT_TRACE_WITH_MSG((op && op->op) ? op->op->get_req() : NULL, "OP_COMMIT_BEGIN", true);
+   dout(10) << __func__ << ": " << op->tid << dendl;
++#if defined(WITH_EVENTTRACE)
+   if (op->op) {
+     op->op->mark_event("op_commit");
+     op->op->pg_trace.event("op commit");
+   }
++#endif
+ 
+   op->waiting_for_commit.erase(get_parent()->whoami_shard());
+ 
+@@ -613,10 +615,12 @@ void ReplicatedBackend::do_repop_reply(OpRequestRef op)
+     if (r->ack_type & CEPH_OSD_FLAG_ONDISK) {
+       ceph_assert(ip_op.waiting_for_commit.count(from));
+       ip_op.waiting_for_commit.erase(from);
++#if defined(WITH_EVENTTRACE)
+       if (ip_op.op) {
+ 	ip_op.op->mark_event("sub_op_commit_rec");
+ 	ip_op.op->pg_trace.event("sub_op_commit_rec");
+       }
++#endif
+     } else {
+       // legacy peer; ignore
+     }
+@@ -1021,6 +1025,7 @@ void ReplicatedBackend::issue_op(
+   ObjectStore::Transaction &op_t)
+ {
+   if (parent->get_acting_recovery_backfill_shards().size() > 1) {
++#if defined(WITH_EVENTTRACE)
+     if (op->op) {
+       op->op->pg_trace.event("issue replication ops");
+       ostringstream ss;
+@@ -1029,6 +1034,7 @@ void ReplicatedBackend::issue_op(
+       ss << "waiting for subops from " << replicas;
+       op->op->mark_sub_op_sent(ss.str());
+     }
++#endif
+ 
+     // avoid doing the same work in generate_subop
+     bufferlist logs;
+@@ -1053,8 +1059,10 @@ void ReplicatedBackend::issue_op(
+ 	  op_t,
+ 	  shard,
+ 	  pinfo);
++#if defined(WITH_EVENTTRACE)
+       if (op->op && op->op->pg_trace)
+ 	wr->trace.init("replicated op", nullptr, &op->op->pg_trace);
++#endif
+       get_parent()->send_message_osd_cluster(
+ 	  shard.osd, wr, get_osdmap_epoch());
+     }
+@@ -1170,8 +1178,10 @@ void ReplicatedBackend::do_repop(OpRequestRef op)
+ 
+ void ReplicatedBackend::repop_commit(RepModifyRef rm)
+ {
++#if defined(WITH_EVENTTRACE)
+   rm->op->mark_commit_sent();
+   rm->op->pg_trace.event("sup_op_commit");
++#endif
+   rm->committed = true;
+ 
+   // send commit.
+@@ -1190,7 +1200,9 @@ void ReplicatedBackend::repop_commit(RepModifyRef rm)
+     0, get_osdmap_epoch(), m->get_min_epoch(), CEPH_OSD_FLAG_ONDISK);
+   reply->set_last_complete_ondisk(rm->last_complete);
+   reply->set_priority(CEPH_MSG_PRIO_HIGH); // this better match ack priority!
++#if defined(WITH_EVENTTRACE)
+   reply->trace = rm->op->pg_trace;
++#endif
+   get_parent()->send_message_osd_cluster(
+     rm->ackerosd, reply, get_osdmap_epoch());
+ 
+diff --git a/src/rocksdb/CMakeLists.txt b/src/rocksdb/CMakeLists.txt
+index fdc894734..1a19f0e1b 100644
+--- a/src/rocksdb/CMakeLists.txt
++++ b/src/rocksdb/CMakeLists.txt
+@@ -452,6 +452,10 @@ if(MSVC)
+   set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} /DEBUG")
+ endif()
+ 
++if(CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64")
++  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -march=armv8.2-a+crc")
++endif()
++
+ if(CMAKE_COMPILER_IS_GNUCXX)
+   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-builtin-memcmp")
+ endif()
+diff --git a/src/rocksdb/util/crc32c.cc b/src/rocksdb/util/crc32c.cc
+index 959658099..880a63351 100644
+--- a/src/rocksdb/util/crc32c.cc
++++ b/src/rocksdb/util/crc32c.cc
+@@ -324,12 +324,21 @@ static inline uint32_t LE_LOAD32(const uint8_t *p) {
+   return DecodeFixed32(reinterpret_cast<const char*>(p));
+ }
+ 
+-#if defined(HAVE_SSE42) && (defined(__LP64__) || defined(_WIN64))
++// #if defined(HAVE_SSE42) && (defined(__LP64__) || defined(_WIN64))
+ static inline uint64_t LE_LOAD64(const uint8_t *p) {
+   return DecodeFixed64(reinterpret_cast<const char*>(p));
+ }
+-#endif
++// #endif
++#ifdef __aarch64__
++#include <stdint.h>
++#include <arm_acle.h>
++#include <arm_neon.h>
+ 
++static inline void Slow_CRC32(uint64_t* l, uint8_t const **p) {
++  *l = __crc32cd(static_cast<uint32_t>(*l), LE_LOAD64(*p));
++  *p += 8;
++}
++#else
+ static inline void Slow_CRC32(uint64_t* l, uint8_t const **p) {
+   uint32_t c = static_cast<uint32_t>(*l ^ LE_LOAD32(*p));
+   *p += 4;
+@@ -345,6 +354,7 @@ static inline void Slow_CRC32(uint64_t* l, uint8_t const **p) {
+   table1_[(c >> 16) & 0xff] ^
+   table0_[c >> 24];
+ }
++#endif
+ 
+ static inline void Fast_CRC32(uint64_t* l, uint8_t const **p) {
+ #ifndef HAVE_SSE42
