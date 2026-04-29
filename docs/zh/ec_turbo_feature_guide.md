@@ -1,4 +1,4 @@
-# EC Turbo特性指南<a name="ZH-CN_TOPIC_0000002521372544"></a>
+# EC Turbo特性指南
 
 ## 介绍<a name="ZH-CN_TOPIC_0000002520752324"></a>
 

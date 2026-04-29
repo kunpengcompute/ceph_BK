@@ -1,4 +1,4 @@
-# EC Turbo调优指南<a name="ZH-CN_TOPIC_0000002552549315"></a>
+# EC Turbo调优指南
 
 ## 调优概述<a name="ZH-CN_TOPIC_0000002551873135"></a>
 
