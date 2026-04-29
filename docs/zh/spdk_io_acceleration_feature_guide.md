@@ -1,4 +1,4 @@
-# SPDK IO加速特性指南<a name="ZH-CN_TOPIC_0000002552469309"></a>
+# SPDK IO加速特性指南
 
 ## 特性描述<a name="ZH-CN_TOPIC_0000002551432413"></a>
 
