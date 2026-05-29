@@ -300,7 +300,11 @@
 
     注释pyopenssl。
 
-    ![](figures/20201222-112746(WeLinkPC).png)
+    ```sh
+    PyJWT==1.6.4
+    #pyopenssl==17.5.0
+    pytest==3.3.2
+    ```
 
 3. 安装依赖。
 
@@ -610,3 +614,9 @@
 4. 部署OSD。
 
     详细操作请参考《Ceph块存储 部署指南（CentOS 7.6&openEuler 20.03）》中的[部署OSD节点](https://www.hikunpeng.com/document/detail/zh/kunpengsdss/ecosystemEnable/Ceph/kunpengcephblock_04_0008.html)。
+
+## 修订记录
+
+| 发布日期  | 修改说明       |
+|-------|----------|
+| 2021-12-31 | 第一次正式发布。|

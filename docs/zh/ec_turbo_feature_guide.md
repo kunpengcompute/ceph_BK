@@ -18,7 +18,6 @@ EC Turbo是华为自研的Ceph纠删码存储池性能优化特性库。EC Turbo
 
 | 兼容项目  | 兼容性规格描述    |
 |-------|------------|
-| CPU型号 | 华为鲲鹏916处理器 |
 | CPU型号 | 华为鲲鹏920处理器 |
 
 >![](public_sys-resources/icon-note.gif) **说明：** 
@@ -612,7 +611,7 @@ ceph-deploy mon create-initial初始化失败。
 
 **关键过程、根本原因分析<a name="zh-cn_topic_0000001590949856_section35471290"></a>**
 
-无。
+无
 
 **结论、解决方案及效果<a name="zh-cn_topic_0000001590949856_section50806158"></a>**
 
@@ -640,7 +639,7 @@ ceph-deploy mon create-initial初始化失败。
 
 **关键过程、根本原因分析<a name="zh-cn_topic_0000001640870397_section35471290"></a>**
 
-无。
+无
 
 **结论、解决方案及效果<a name="zh-cn_topic_0000001640870397_section50806158"></a>**
 
@@ -698,7 +697,7 @@ yum install python3-pyOpenSSL.noarch
 
 **关键过程、根本原因分析<a name="zh-cn_topic_0000001640750989_section35471290"></a>**
 
-无。
+无
 
 **结论、解决方案及效果<a name="zh-cn_topic_0000001640750989_section50806158"></a>**
 
@@ -714,3 +713,11 @@ yum install python3-pyOpenSSL.noarch
     ```sh
     rm -rf build/ && sh do_cmake.sh
     ```
+
+## 修订记录
+
+| 发布日期  | 修改说明       |
+|-------|----------|
+| 2024-12-30 | 第二次正式发布。<br> EC Turbo支持Ceph全闪存。 |
+| 2024-12-30 | 第一次正式发布。|
+
