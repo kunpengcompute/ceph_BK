@@ -2040,7 +2040,7 @@ TELEMETRY: No legacy callbacks, legacy socket not created
 
 ### 更新网卡固件和驱动<a id="更新网卡固件和驱动"></a>
 
-1. [下载固件包](https://support.huawei.com/enterprise/zh/software//260855985-ESW2000807879)并解压（以CX-5网卡为例）。
+1. [下载固件包](https://support.huawei.com/enterprise/zh/software/260855985-ESW2000807879)并解压（以CX-5网卡为例）。
 2. 升级固件。
 
     ```sh
@@ -2263,3 +2263,8 @@ TELEMETRY: No legacy callbacks, legacy socket not created
 | TCP       | Transmission Control Protocol       | 传输控制协议         |
 | **U - Z** |
 | UCX       | Unified Communication X             | 统一抽象通信接口       |
+
+## 修订记录
+| 发布日期  | 修改说明       |
+|-------|----------|
+| 2025-03-30 | 第一次正式发布。 |

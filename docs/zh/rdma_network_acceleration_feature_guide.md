@@ -1217,3 +1217,8 @@ reboot
 | TCP       | Transmission Control Protocol       | 传输控制协议         |
 | **U - Z** |
 | UCX       | Unified Communication X             | 统一抽象通信接口       |
+
+## 修订记录
+| 发布日期  | 修改说明       |
+|-------|----------|
+| 2024-09-30 | 第一次正式发布。 |
