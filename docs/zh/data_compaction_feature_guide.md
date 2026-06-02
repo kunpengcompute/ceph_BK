@@ -46,7 +46,7 @@
     ```
 
 3. 合入数据压紧插件。
-    1. 下载[ceph-14.2.8-compaction.patch](https://gitcode.com/boostkit/ceph/releases/download/datacompaction/ceph-14.2.8-compaction.patch)放入`/home/ceph-14.2.8`目录。
+    1. 下载[ceph-14.2.8-compaction.patch](https://gitcode.com/boostkit/ceph_BK/releases/download/datacompaction/ceph-14.2.8-compaction.patch)放入`/home/ceph-14.2.8`目录。
 
     2. 合入patch。
 

@@ -99,7 +99,7 @@ Ceph集群部署各客户端IP地址举例如[**表 4** 客户端部署示例](#
         ```
 
 3. 合入Ceph EC代码优化补丁。
-    1. 下载[ceph-ecturbo-optimization.patch](https://gitcode.com/boostkit/ceph/releases/download/ec_turbo_optimization/ceph-ecturbo-optimization.patch)放置到`/home/ceph-14.2.10`。
+    1. 下载[ceph-ecturbo-optimization.patch](https://gitcode.com/boostkit/ceph_BK/releases/download/ec_turbo_optimization/ceph-ecturbo-optimization.patch)放置到`/home/ceph-14.2.10`。
 
     2. 备份原有的`ceph.spec`文件。
 

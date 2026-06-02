@@ -18,6 +18,7 @@ Pay attention to the vulnerabilities reported on the Ceph official website and C
 
 |Item|Specifications|
 |--|--|
+|CPU model|Kunpeng 916|
 |CPU model|Kunpeng 920|
 
 >![](public_sys-resources/icon-note.gif) **Note:**
