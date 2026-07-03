@@ -118,8 +118,8 @@ Ceph集群部署各客户端IP地址举例如[**表 2** 客户端部署IP地址]
 
 | 软件包                      | 说明                                     | 获取路径                                                                                                                                  |
 |--------------------------|----------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------|
-| ceph-17.2.x-spdk.patch   | Ceph适配SPDK的补丁文件                        | [获取链接](https://gitcode.com/boostkit/ceph/releases/download/v1.0.2/ceph-17.2.x-spdk.patch)                                             |
-| ceph-17.2.x-ucx.patch    | Ceph适配UCX的补丁文件                         | [获取链接](https://gitcode.com/boostkit/ceph/releases/download/v1.0.2/ceph-17.2.x-ucx.patch)                                              |
+| ceph-17.2.x-spdk.patch   | Ceph适配SPDK的补丁文件                        | [获取链接](https://gitcode.com/boostkit/ceph_BK/blob/master/ceph-17.2.x-spdk.patch)                                             |
+| ceph-17.2.x-ucx.patch    | Ceph适配UCX的补丁文件                         | [获取链接](https://gitcode.com/boostkit/ceph_BK/blob/master/ceph-17.2.x-ucx.patch)                                              |
 | BoostKit-KSAL_1.10.0.zip | 存储算法加速库（KSAL闭源算法包），可提高Ceph内部相关算法的运算效率。 | [获取链接](https://kunpeng-repo.obs.cn-north-4.myhuaweicloud.com/Kunpeng%20BoostKit/Kunpeng%20BoostKit%2024.0.0/BoostKit-KSAL_1.10.0.zip) |
 
 在编译和部署UCX之前，需要准备以下软件包和文件。
@@ -2040,7 +2040,7 @@ TELEMETRY: No legacy callbacks, legacy socket not created
 
 ### 更新网卡固件和驱动<a id="更新网卡固件和驱动"></a>
 
-1. [下载固件包](https://support.huawei.com/enterprise/zh/software//260855985-ESW2000807879)并解压（以CX-5网卡为例）。
+1. [下载固件包](https://support.huawei.com/enterprise/zh/software/260855985-ESW2000807879)并解压（以CX-5网卡为例）。
 2. 升级固件。
 
     ```sh
@@ -2263,3 +2263,8 @@ TELEMETRY: No legacy callbacks, legacy socket not created
 | TCP       | Transmission Control Protocol       | 传输控制协议         |
 | **U - Z** |
 | UCX       | Unified Communication X             | 统一抽象通信接口       |
+
+## 修订记录
+| 发布日期  | 修改说明       |
+|-------|----------|
+| 2025-03-30 | 第一次正式发布。 |

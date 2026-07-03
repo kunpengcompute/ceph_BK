@@ -68,7 +68,7 @@ RDMA网络加速特性主要使用UCX适配Ceph分布式存储开源版本主流
 
 | 软件包                   | 说明             | 获取路径                                                                                     |
 |-----------------------|----------------|------------------------------------------------------------------------------------------|
-| ceph-14.2.8-ucx.patch | Ceph适配UCX的补丁文件 | [获取链接](https://gitcode.com/boostkit/ceph/releases/download/v1.0.1/ceph-14.2.8-ucx.patch) |
+| ceph-14.2.8-ucx.patch | Ceph适配UCX的补丁文件 | [获取链接](https://gitcode.com/boostkit/ceph_BK/blob/master/ceph-14.2.8-ucx.patch) |
 
 在编译和部署UCX之前，需要准备以下软件包和文件。
 
@@ -1217,3 +1217,8 @@ reboot
 | TCP       | Transmission Control Protocol       | 传输控制协议         |
 | **U - Z** |
 | UCX       | Unified Communication X             | 统一抽象通信接口       |
+
+## 修订记录
+| 发布日期  | 修改说明       |
+|-------|----------|
+| 2024-09-30 | 第一次正式发布。 |
