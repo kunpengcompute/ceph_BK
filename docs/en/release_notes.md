@@ -216,7 +216,7 @@ None
 
 ### Obtaining Documentation
 
-Visit the [open-source repository](https://gitcode.com/Boostkit/ceph_BK) to view or download related documents.
+Visit the [open-source repository](https://gitcode.com/boostkit/ceph_BK) to view or download related documents.
 
 ## Change History
 

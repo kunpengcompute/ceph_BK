@@ -719,4 +719,4 @@ None
 | Date  | Description       |
 |-------|----------|
 | 2024-12-30 | This is the second official release. <br>Added Ceph all-flash storage support for EC Turbo. |
-| 2024-12-30 | This is the first official release.|
+| 2022-12-17 | This is the first official release.|
