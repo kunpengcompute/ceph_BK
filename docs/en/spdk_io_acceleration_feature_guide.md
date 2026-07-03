@@ -96,7 +96,7 @@ Example client IP addresses are listed in [**Table 2**](#client-IP-addresses).
 
 |Item|Version|How to Obtain|
 |--|--|--|
-|Physical machine OS|openEuler 20.03 LTS SP4|[OS](https://mirrors.tools.huawei.com/openeuler/openEuler-20.03-LTS-SP4/ISO/aarch64/openEuler-20.03-LTS-SP4-everything-aarch64-dvd.iso)|
+|Physical machine OS|openEuler 20.03 LTS SP4|[OS](https://repo.huaweicloud.com/openeuler/openEuler-20.03-LTS-SP4/ISO/aarch64/openEuler-20.03-LTS-SP4-aarch64-dvd.iso)|
 |openEuler image|openEuler 22.03 LTS SP4|[Image](https://repo.huaweicloud.com/openeuler/openEuler-22.03-LTS-SP4/docker_img/aarch64/openEuler-docker.aarch64.tar.xz)|
 |Ceph|17.2.7|[Ceph](https://download.ceph.com/tarballs/ceph-17.2.7.tar.gz)|
 |UCX|1.14.1|[1](https://github.com/openucx/ucx/releases/download/v1.14.1/ucx-1.14.1-1.el7.src.rpm)<br>[2](https://github.com/openucx/ucx/releases/download/v1.14.1/ucx-1.14.1.tar.gz)|

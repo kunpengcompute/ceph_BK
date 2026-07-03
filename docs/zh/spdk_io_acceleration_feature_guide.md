@@ -96,7 +96,7 @@ Ceph集群部署各客户端IP地址举例如[**表 2** 客户端部署IP地址]
 
 | 项目      | 版本                                | 获取地址                                                                                                                                                                              |
 |---------|-----------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| 物理机操作系统 | openEuler 20.03 LTS SP4           | [获取链接](https://mirrors.tools.huawei.com/openeuler/openEuler-20.03-LTS-SP4/ISO/aarch64/openEuler-20.03-LTS-SP4-everything-aarch64-dvd.iso)                                         |
+| 物理机操作系统 | openEuler 20.03 LTS SP4           | [获取链接](https://repo.huaweicloud.com/openeuler/openEuler-20.03-LTS-SP4/ISO/aarch64/openEuler-20.03-LTS-SP4-everything-aarch64-dvd.iso)                                         |
 | 欧拉镜像    | openEuler 22.03 LTS SP4           | [获取链接](https://repo.huaweicloud.com/openeuler/openEuler-22.03-LTS-SP4/docker_img/aarch64/openEuler-docker.aarch64.tar.xz)                                                         |
 | Ceph    | 17.2.7                            | [获取链接](https://download.ceph.com/tarballs/ceph-17.2.7.tar.gz)                                                                                                                     |
 | UCX     | 1.14.1                            | [获取链接1](https://github.com/openucx/ucx/releases/download/v1.14.1/ucx-1.14.1-1.el7.src.rpm)<br>[获取链接2](https://github.com/openucx/ucx/releases/download/v1.14.1/ucx-1.14.1.tar.gz) |
