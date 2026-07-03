@@ -58,7 +58,7 @@ Ceph is used in the environment, including three client nodes and three server n
 
 |Item|Version|How to Obtain|
 |--|--|--|
-|Physical machine OS|openEuler 20.03 LTS SP4|[OS](https://mirrors.tools.huawei.com/openeuler/openEuler-20.03-LTS-SP4/ISO/aarch64/openEuler-20.03-LTS-SP4-aarch64-dvd.iso)|
+|Physical machine OS|openEuler 20.03 LTS SP4|[OS](https://repo.huaweicloud.com/openeuler/openEuler-20.03-LTS-SP4/ISO/aarch64/openEuler-20.03-LTS-SP4-aarch64-dvd.iso)|
 |Ceph|14.2.8|[Ceph](https://download.ceph.com/tarballs/ceph-14.2.8.tar.gz)|
 |UCX|1.14.1|[UCX](https://github.com/openucx/ucx/releases/download/v1.14.1/ucx-1.14.1-1.el7.src.rpm)|
 
