@@ -720,4 +720,3 @@ yum install python3-pyOpenSSL.noarch
 |-------|----------|
 | 2024-12-30 | 第二次正式发布。<br> EC Turbo支持Ceph全闪存。 |
 | 2024-12-30 | 第一次正式发布。|
-

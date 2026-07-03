@@ -92,7 +92,7 @@ Ceph data storage pools are classified into two types: replicated and erasure-co
 >
 > If other SDS features need to be added, install patches by referring to the feature guides.
 
-1. <a id="p270mcpsimp"></a>Obtain [ceph-14.2.8-ec_turbo-release.patch](https://gitcode.com/boostkit/ceph/releases/download/14.2.8/ceph-14.2.8-ec_turbo-release.patch) and save it to `/home/ceph-14.2.8`.
+1. <a id="p270mcpsimp"></a>Obtain [ceph-14.2.8-ec_turbo-release.patch](https://gitcode.com/boostkit/ceph_BK/releases/download/14.2.8/ceph-14.2.8-ec_turbo-release.patch) and save it to `/home/ceph-14.2.8`.
 
 2. Back up the original `ceph.spec` file. A new `ceph.spec` file will be generated when you apply the patch in the next step.
 
