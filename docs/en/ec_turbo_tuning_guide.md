@@ -1,4 +1,4 @@
-# EC Turbo Tuning Guide<a name="EN-US_TOPIC_0000002552549315"></a>
+# EC Turbo Tuning Guide
 
 ## Tuning Overview<a name="EN-US_TOPIC_0000002551873135"></a>
 
@@ -14,12 +14,12 @@ Erasure coding (EC) adopts parity code to correct data loss. For example, in EC 
 
 **Table 1** Hardware requirements<a id="hardware-requirements"></a>
 
-|Item|Specifications|
-|--|--|
-|CPU model|Kunpeng 920|
-|Memory size|12 x 32 GB|
-|NIC|IN200 NIC (4 x 25GE)|
-|Drive|System drive: 960 GB SATA HDD<br>Data drive: 8 x ES3000 V5 3.2 TB NVMe SSD|
+| Item    | Specifications                                     |
+|-------|------------------------------------------------------|
+| CPU  | Kunpeng 920                                           |
+| Memory | 12 x 32 GB                                          |
+| NIC | IN200 NIC (4 x 25GE)                                   |
+| Drive | System drive: 960 GB SATA HDD<br>Data drive: 8 x ES3000 V5 3.2 TB NVMe SSD |
 
 **Software Requirements<a name="section1240364411598"></a>**
 
@@ -35,8 +35,6 @@ Erasure coding (EC) adopts parity code to correct data loss. For example, in EC 
 The cluster consists of Ceph clients and Ceph servers. The following figure shows the networking.
 
 ![](figures/physical-networking-diagram.png "physical-networking-diagram-22")
-
-**Figure 1** Physical networking diagram<a id="fig1742235503115"></a><a id="physical-networking-diagram"></a>
 
 The following table lists the server IP addresses in the Ceph cluster.
 
@@ -58,7 +56,7 @@ The following table lists the client IP addresses in the Ceph cluster.
 |client2|192.168.3.161|
 |client3|192.168.3.162|
 
->![](public_sys-resources/icon-note.gif) **Note:**
+>![](public_sys-resources/icon-note.gif) **NOTE**
 >
 >- Cluster network IP address: IP address used for data synchronization between server nodes in the cluster. Select any 25GE network port.
 >- Public network IP address: IP address of a server node for client nodes to access. Select any 25GE network port.
@@ -101,7 +99,7 @@ After EC Turbo and the basic optimizations are used, the read/write performance 
         ```
 
 3. Apply the Ceph EC optimization patch.
-    1. Download [ceph-ecturbo-optimization.patch](https://gitcode.com/boostkit/ceph/releases/download/ec_turbo_optimization/ceph-ecturbo-optimization.patch) and save it to `/home/ceph-14.2.10`.
+    1. Download [ceph-ecturbo-optimization.patch](https://gitcode.com/boostkit/ceph_BK/releases/download/ec_turbo_optimization/ceph-ecturbo-optimization.patch) and save it to `/home/ceph-14.2.10`.
 
     2. Back up the original `ceph.spec` file.
 
@@ -120,7 +118,7 @@ After EC Turbo and the basic optimizations are used, the read/write performance 
 
 5. Prepare the Ceph compilation environment. For details, see [Preparing the Compilation Environment](https://www.hikunpeng.com/document/detail/en/kunpengsdss/appAccelFeatures/ecturbo/kunpengecturbo_20_0018.html) in the *EC Turbo Feature Guide*.
 
-    >![](public_sys-resources/icon-note.gif) **Note:**
+    >![](public_sys-resources/icon-note.gif) **NOTE**
     >
     >The optimizations require the hugepage feature. After running the `install-deps.sh` script (which does not install the hugepage dependency), you need to run the following command to install the dependency:
     >
@@ -134,7 +132,8 @@ After EC Turbo and the basic optimizations are used, the read/write performance 
 
 8. Deploy a Ceph cluster. For details, see [Deploying a Ceph Cluster](https://www.hikunpeng.com/document/detail/en/kunpengsdss/appAccelFeatures/ecturbo/kunpengecturbo_20_0011.html).
 
-    >![](public_sys-resources/icon-note.gif) **Note:**
+    >![](public_sys-resources/icon-note.gif) **NOTE**
+    >
     >In this environment, all data drives are NVMe drives. Therefore, you do not need to create OSD partitions when deploying OSD nodes. You can directly use NVMe drives as OSD data drives. To maximize hardware performance, the optimal number of OSD nodes deployed on each server is 24. You are advised to divide each NVMe drive into three partitions and then deploy OSD nodes.
 
 Code optimizations include EC Turbo and some common basic optimizations in Ceph, such as Crush algorithm acceleration and RocksDB CRC algorithm optimization.
@@ -345,7 +344,7 @@ You can edit the `/etc/ceph/ceph.conf` file to modify all Ceph configuration par
     osd_numa_node=3
     ```
 
-    >![](public_sys-resources/icon-note.gif) **Note:**
+    >![](public_sys-resources/icon-note.gif) **NOTE**
     >
     >In the configuration file, `osd_numa_node=0` indicates that the `osd0` process is bound to NUMA0. This document uses the Kunpeng 920 7260 processor as an example. This model has four NUMA nodes, and 24 OSDs are deployed on each node. To better utilize hardware performance, you need to evenly bind OSD processes to CPU cores. In this case, every 6 consecutive OSDs are bound to a NUMA node. If the CPU in use has only two NUMA nodes, bind every 12 consecutive OSDs to a NUMA node. Other cases may be processed by analogy. You can run the `lscpu` command to check the number of CPU NUMA nodes.
     >
@@ -403,17 +402,19 @@ Configuring huge pages for the data segment can reduce the probability of transl
     echo 163840 > /proc/sys/vm/nr_hugepages 
     ```
 
-    >![](public_sys-resources/icon-note.gif) **Note:**
-    >- On openEuler 20.03, the 64 KB kernel page has a bug. You need to recompile the kernel to change the memory page size to 4 KB. Run the following command to check the kernel page size:
+    >![](public_sys-resources/icon-note.gif) **NOTE**
+    >
+    > - On openEuler 20.03, the 64 KB kernel page has a bug. You need to recompile the kernel to change the memory page size to 4 KB. Run the following command to check the kernel page size:
     >
     >    ```sh
     >    getconf PAGESIZE
     >    ```
     >
     >    ![](figures/zh-cn_image_0000002520913158.png)
+    >
     >    If the command output is `4096`, the kernel page size is 4 KB. If not, perform compilation and installation by following instructions in [Compiling the Kernel](https://www.hikunpeng.com/document/detail/en/kunpengsdss/basicAccelFeatures/cacheAccel/kunpengbcache_06_0003.html) in the *Bcache User Guide*.
-    >- The memory capacity occupied by system huge pages must be greater than or equal to the memory required by OSDs on the current node (`osd_memory_target` \* Number of OSDs). For example, if each node is deployed with 24 OSDs and `osd_memory_target` is set to 10 GB, the hugepage memory must be at least 240 GB. In the 4 KB kernel page environment, the size of a huge page is 2 MB. Therefore, the number of huge pages must be at least 120,000.
-    >- If the system has been running for a long time, the memory may be too fragmented to allocate a certain number of huge pages. In this case, you can add the hugepage allocation options to the configurations of the corresponding kernel (run the `uname -r` command to query) and reboot the server to validate the modification.
+    > - The memory capacity occupied by system huge pages must be greater than or equal to the memory required by OSDs on the current node (`osd_memory_target` \* Number of OSDs). For example, if each node is deployed with 24 OSDs and `osd_memory_target` is set to 10 GB, the hugepage memory must be at least 240 GB. In the 4 KB kernel page environment, the size of a huge page is 2 MB. Therefore, the number of huge pages must be at least 120,000.
+    > - If the system has been running for a long time, the memory may be too fragmented to allocate a certain number of huge pages. In this case, you can add the hugepage allocation options to the configurations of the corresponding kernel (run the `uname -r` command to query) and reboot the server to validate the modification.
     >   1. Open the `grub.cfg` file and add `hugepagesz=2M` and `hugepages=163840` to the file.
     >
     >        ```sh
@@ -483,8 +484,9 @@ Configuring huge pages for the data segment can reduce the probability of transl
 
 Configuring huge pages for the code segment of `ceph-osd` can reduce the number of misses in the instruction translation lookaside buffer (iTLB) and further improve performance.
 
->![](public_sys-resources/icon-note.gif) **Note:**
->Perform the following steps on all server nodes.
+> ![](public_sys-resources/icon-note.gif) **NOTE**
+>
+> Perform the following steps on all server nodes.
 
 1. Mount the `tmpfs` huge page to the `/media` directory.
 
@@ -852,7 +854,7 @@ Binding NIC interrupts to several fixed CPU cores can reduce performance loss ca
     ip a
     ```
 
-    >![](public_sys-resources/icon-note.gif) **Note:**
+    >![](public_sys-resources/icon-note.gif) **NOTE**
     >
     >In this example, the NIC name corresponding to the public network (192.168.3.166) is `enp1330f1`, and that corresponding to the cluster network (192.168.4.166) is `enp1330f2`.
     >
@@ -865,9 +867,10 @@ Binding NIC interrupts to several fixed CPU cores can reduce performance loss ca
     cat /proc/interrupts |grep enp133s0f2 | awk '{print $1}' | awk -F ':' '{print $1}'
     ```
 
-    >![](public_sys-resources/icon-note.gif) **Note:**
-    >- In the preceding commands, `enp133s0f1` and `enp133s0f2` correspond to the NIC names of the public network and cluster network, respectively. If no information is displayed after the commands are run, the interrupts cannot be obtained by NIC name. In this case, you need to query the interrupts by NIC bus information.
-    >- Run the `ethtool -i <NIC_name>` command to obtain the bus information of the NIC.
+    > ![](public_sys-resources/icon-note.gif) **NOTE**
+    >
+    > - In the preceding commands, `enp133s0f1` and `enp133s0f2` correspond to the NIC names of the public network and cluster network, respectively. If no information is displayed after the commands are run, the interrupts cannot be obtained by NIC name. In this case, you need to query the interrupts by NIC bus information.
+    > - Run the `ethtool -i <NIC_name>` command to obtain the bus information of the NIC.
     >
     > ![](figures/zh-cn_image_0000002520913150.png)
     >
@@ -875,7 +878,7 @@ Binding NIC interrupts to several fixed CPU cores can reduce performance loss ca
     >
     > ```sh
     >    cat /proc/interrupts |grep 0000:85:00.0 | awk '{print $1}' | awk -F ':' '{print $1}'
-    >  ```
+    > ```
 
 5. Create a core binding script.
     1. Create `bind_net_intterrupt.sh`.
@@ -894,10 +897,10 @@ Binding NIC interrupts to several fixed CPU cores can reduce performance loss ca
         idx=0;for i in `cat /proc/interrupts | grep enp133s0f2 | awk '{print $1}' | awk -F ':' '{print $1}'`;do echo ${arr[$idx]} > /proc/irq/${i}/smp_affinity_list;((idx=(idx+1)%16));echo $idx;done
         ```
 
-        >![](public_sys-resources/icon-note.gif) **Note:**
+        > ![](public_sys-resources/icon-note.gif) **NOTE**
         >
-        >- Replace `enp133s0f1` and `enp133s0f2` in this script based on the results in [4](#li26801437175213). If the interrupts can be obtained by NIC name, no modification is required. Otherwise, replace the NIC names with the corresponding NIC bus information.
-        >- The `arr` array lists the first four CPU cores of each NUMA node. Bind all NIC interrupts to the listed CPU cores.
+        > - Replace `enp133s0f1` and `enp133s0f2` in this script based on the results in [4](#li26801437175213). If the interrupts can be obtained by NIC name, no modification is required. Otherwise, replace the NIC names with the corresponding NIC bus information.
+        > - The `arr` array lists the first four CPU cores of each NUMA node. Bind all NIC interrupts to the listed CPU cores.
 
 6. Run the core binding script.
 
@@ -909,8 +912,9 @@ Binding NIC interrupts to several fixed CPU cores can reduce performance loss ca
 
     ![](figures/zh-cn_image_0000002551873141.png)
 
-    >![](public_sys-resources/icon-note.gif) **Note:**
-    >The network tasks preferentially run on the first four CPU cores of each NUMA node.
+    > ![](public_sys-resources/icon-note.gif) **NOTE**
+    >
+    > The network tasks preferentially run on the first four CPU cores of each NUMA node.
 
 Binding NIC interrupts to several fixed CPU cores can reduce performance loss caused by frequent CPU scheduling and save time for processing services. The core binding strategy has been tested for multiple times. It greatly improves small-block read/write performance in EC mode, without affecting large-block read/write.
 
@@ -918,8 +922,9 @@ Binding NIC interrupts to several fixed CPU cores can reduce performance loss ca
 
 This section describes how to create EC storage pools, embed data, and perform read/write tests on 4 KB blocks.
 
->![](public_sys-resources/icon-note.gif) **Note:**
->Perform the following steps only on `client1`.
+> ![](public_sys-resources/icon-note.gif) **NOTE**
+>
+> Perform the following steps only on `client1`.
 
 1. Create a `perf_test` directory under `/home` to store test scripts.
 
@@ -1183,9 +1188,16 @@ This section describes how to create EC storage pools, embed data, and perform r
         sh cluster_fio.sh -p ec_metadata -n 60 -b 4k -d 64 -t randwrite
         ```
 
-        >![](public_sys-resources/icon-note.gif) **Note:**
-        >- `-p` specifies a storage pool.
-        >- `-n` specifies the number of volumes.
-        >- `-b` specifies the block size.
-        >- `-d` specifies the I/O depth.
-        >- `-t` specifies the read/write mode.
+        > ![](public_sys-resources/icon-note.gif) **NOTE**
+        >
+        > - `-p` specifies a storage pool.
+        > - `-n` specifies the number of volumes.
+        > - `-b` specifies the block size.
+        > - `-d` specifies the I/O depth.
+        > - `-t` specifies the read/write mode.
+
+## Change History
+
+| Date  | Description       |
+|-------|----------|
+| 2024-12-30 | This is the first official release. |

@@ -1,8 +1,8 @@
-# Data Compaction Feature Guide<a name="EN-US_TOPIC_0000002521549334"></a>
+# Data Compaction Feature Guide
 
 ## Introduction<a name="EN-US_TOPIC_0000002521000682"></a>
 
-The data compaction algorithm is deployed on an open-source Ceph cluster to eliminate data waste caused by zero padding. In addition, combined with functions including data encapsulation, space allocation based on block counting, granularity-based traffic division, batch submission, and batch callback, the data compaction algorithm improves the data reduction ratio and overall system IOPS, which reduces costs and improves performance.
+The data compaction algorithm is deployed on an open-source Ceph cluster to eliminate data waste caused by zero padding. In addition, combined with techniques including data encapsulation, space allocation based on block counting, granularity-based traffic steering, batch submission, and batch callback, the data compaction algorithm improves the data reduction ratio and overall system IOPS, which reduces costs and improves performance.
 
 This document describes how to enable the data compaction algorithm on Ceph. The data compaction algorithm consists of an open-source patch and a closed-source RPM package. After integrating the data compaction software into Ceph source code, compile and deploy Ceph. The data compaction function takes effect in the Ceph cluster.
 
@@ -16,29 +16,28 @@ Pay attention to the vulnerabilities reported on the Ceph official website and C
 
 ## Environment Requirements<a name="EN-US_TOPIC_0000002551960673"></a>
 
->![](public_sys-resources/icon-note.gif) **Note:**
+>![](public_sys-resources/icon-note.gif) **NOTE**
+>
 >The data compaction algorithm can be used only on the Kunpeng platform.
 
 **Hardware Requirements<a name="section175763583914"></a>**
 
-|Item|Description|
-|--|--|
-|CPU model|Kunpeng 920|
+| Item | Description |
+|-------|----------|
+| CPU model | Kunpeng 920 |
 
 **Software Requirements<a name="section11547175216395"></a>**
 
-|Item|Description|
-|--|--|
-|OS|CentOS Linux release 7.6.1810|
-|OS|openEuler 20.03 LTS SP1|
-|GCC|GCC 7.3.0|
-|Ceph|Ceph 14.2.8|
+| Item | Description |
+|------|-------------------------------|
+| OS | CentOS Linux release 7.6.1810 |
+| OS | openEuler 20.03 LTS SP1 |
+| GCC | GCC 7.3.0 |
+| Ceph | Ceph 14.2.8 |
 
 ## Integrating the Data Compaction Function into Ceph<a name="EN-US_TOPIC_0000002551960671"></a>
 
-1. Click [here](https://download.ceph.com/tarballs/) to obtain the Ceph 14.2.8 source code.
-
-    ![](figures/zh-cn_image_0000002552040689.png)
+1. Download the [Ceph 14.2.8 source package](https://download.ceph.com/tarballs/ceph-14.2.8.tar.gz).
 
 2. Save the source package to the `/home` directory on the server and decompress it.
 
@@ -48,7 +47,7 @@ Pay attention to the vulnerabilities reported on the Ceph official website and C
     ```
 
 3. Apply the data compaction plugin.
-    1. Download [ceph-14.2.8-compaction.patch](https://gitcode.com/boostkit/ceph/releases/download/datacompaction/ceph-14.2.8-compaction.patch) and save it to the `/home/ceph-14.2.8` directory.
+    1. Download [ceph-14.2.8-compaction.patch](https://gitcode.com/boostkit/ceph_BK/releases/download/datacompaction/ceph-14.2.8-compaction.patch) and save it to the `/home/ceph-14.2.8` directory.
 
     2. Apply the patch.
 
@@ -80,7 +79,7 @@ Pay attention to the vulnerabilities reported on the Ceph official website and C
 
 ### Environment Preparation<a name="EN-US_TOPIC_0000002552040685"></a>
 
->![](public_sys-resources/icon-note.gif) **Note:**
+>![](public_sys-resources/icon-note.gif) **NOTE**
 >
 >The operations vary according to the OS. Unless otherwise specified, the operations are the same on the two OSs.
 
@@ -243,7 +242,17 @@ Pay attention to the vulnerabilities reported on the Ceph official website and C
 5. Install the dependencies required for compiling Ceph source code on the server.
 
     ```sh
-    yum install java-devel sharutils checkpolicy selinux-policy-devel gperf cryptsetup fuse-devel gperftools-devel libaio-devel libblkid-devel libcurl-devel libudev-devel libxml2-devel libuuid-devel ncurses-devel python-devel valgrind-devel xfsprogs-devel xmlstarlet yasm nss-devel libibverbs-devel openldap-devel CUnit-devel python2-Cython python3-setuptools python-prettytable lttng-ust-devel expat-devel junit boost-random keyutils-libs-devel openssl-devel libcap-ng-devel python-sphinx python2-sphinx python3-sphinx leveldb leveldb-devel snappy snappy-devel lz4 lz4-devel liboath liboath-devel libbabeltrace-devel librabbitmq librabbitmq-devel librdkafka librdkafka-devel libnl3 libnl3-devel rdma-core-devel numactl numactl-devel numactl-libs createrepo openldap-devel rdma-core-devel lz4-devel expat-devel lttng-ust-devel libbabeltrace-devel python3-Cython python2-Cython gperftools-devel bc dnf-plugins-core librabbitmq-devel rpm-build java-1.8.0-openjdk-devel -y
+    yum install -y java-devel sharutils checkpolicy selinux-policy-devel gperf cryptsetup fuse-devel /
+     gperftools-devel libaio-devel libblkid-devel libcurl-devel libudev-devel libxml2-devel /
+     libuuid-devel ncurses-devel python-devel valgrind-devel xfsprogs-devel xmlstarlet yasm /
+     nss-devel libibverbs-devel openldap-devel CUnit-devel python2-Cython python3-setuptools /
+     python-prettytable lttng-ust-devel expat-devel junit boost-random keyutils-libs-devel openssl-devel /
+     libcap-ng-devel python-sphinx python2-sphinx python3-sphinx leveldb leveldb-devel snappy /
+     snappy-devel lz4 lz4-devel liboath liboath-devel libbabeltrace-devel librabbitmq librabbitmq-devel /
+     librdkafka librdkafka-devel libnl3 libnl3-devel rdma-core-devel numactl numactl-devel numactl-libs /
+     createrepo openldap-devel rdma-core-devel lz4-devel expat-devel lttng-ust-devel libbabeltrace-devel /
+     python3-Cython python2-Cython gperftools-devel bc dnf-plugins-core librabbitmq-devel rpm-build /
+     java-1.8.0-openjdk-devel
     ```
 
 6. Regenerate an `rpmbuild` directory in `/home`.
@@ -292,7 +301,11 @@ Pay attention to the vulnerabilities reported on the Ceph official website and C
 
     Comment out `pyopenssl`.
 
-    ![](figures/20201222-112746(WeLinkPC).png)
+    ```sh
+    PyJWT==1.6.4
+    #pyopenssl==17.5.0
+    pytest==3.3.2
+    ```
 
 3. Install the dependencies.
 
@@ -358,7 +371,7 @@ Pay attention to the vulnerabilities reported on the Ceph official website and C
         rm -rf /etc/yum.repos.d/epel.repo
         ```
 
-        >![](public_sys-resources/icon-note.gif) **Note:**
+        >![](public_sys-resources/icon-note.gif) **NOTE**
         >
         >The EPEL repository must be deleted. Otherwise, an RPM package that conflicts with openEuler will be downloaded from the EPEL repository in subsequent steps.
 
@@ -573,16 +586,18 @@ Pay attention to the vulnerabilities reported on the Ceph official website and C
     - For object storage, see [Installing the Ceph Software](https://www.hikunpeng.com/document/detail/en/kunpengsdss/ecosystemEnable/Ceph/topic_0000002085746853.html), [Deploying MON Nodes](https://www.hikunpeng.com/document/detail/en/kunpengsdss/ecosystemEnable/Ceph/topic_0000002085705429.html), and [Deploying MGR Nodes](https://www.hikunpeng.com/document/detail/en/kunpengsdss/ecosystemEnable/Ceph/topic_0000002049507988.html) in the *Ceph Object Storage Deployment Guide*.
     - For file storage, see [Installing the Ceph Software](https://www.hikunpeng.com/document/detail/en/kunpengsdss/ecosystemEnable/Ceph/topic_0000002049869318.html), [Deploying MON Nodes](https://www.hikunpeng.com/document/detail/en/kunpengsdss/ecosystemEnable/Ceph/topic_0000002085868453.html), and [Deploying MGR Nodes](https://www.hikunpeng.com/document/detail/en/kunpengsdss/ecosystemEnable/Ceph/topic_0000002085789877.html) in the *Ceph File Storage Deployment Guide*.
 
-    >![](public_sys-resources/icon-note.gif) **Note:**
-    >In the deployment guides, the configured Ceph repository is an official Ceph repository, which is an RPM package that does not contain the data compaction algorithm plugin. Therefore, you need to configure Ceph using the local repository. The data compaction algorithm supports only Ceph 14.2.8 and needs to be dynamically adjusted during deployment.
+    >![](public_sys-resources/icon-note.gif) **NOTE**
+    >
+    > In the deployment guides, the configured Ceph repository is an official Ceph repository, which is an RPM package that does not contain the data compaction algorithm plugin. Therefore, you need to configure Ceph using the local repository. The data compaction algorithm supports only Ceph 14.2.8 and needs to be dynamically adjusted during deployment.
 
 3. Modify the Ceph configuration file `ceph.conf`.
 
     The product of `osd_op_num_shards_hdd` and `osd_op_num_threads_per_shard_hdd` is the number of threads for the OSD process to process I/O requests. The default value is **5\*1**. You can change the value to **12\*2** to deliver the maximum performance of the data compaction algorithm.
 
-    >![](public_sys-resources/icon-note.gif) **Note:**
-    >- The configuration items provided in this step are applicable only to HDD scenarios.
-    >- The modification can be dynamically adjusted after OSD nodes are deployed.
+    >![](public_sys-resources/icon-note.gif) **NOTE**
+    >
+    > - The configuration items provided in this step are applicable only to HDD scenarios.
+    > - The modification can be dynamically adjusted after OSD nodes are deployed.
 
     ```sh
     vi /etc/ceph/ceph.conf
@@ -600,3 +615,9 @@ Pay attention to the vulnerabilities reported on the Ceph official website and C
 4. Deploy OSD nodes.
 
     For details, see [Deploying OSD Nodes](https://www.hikunpeng.com/document/detail/en/kunpengsdss/ecosystemEnable/Ceph/kunpengcephblock_04_0008.html) in the *Ceph Block Storage Deployment Guide (CentOS 7.6 & openEuler 20.03)*.
+
+## Change History
+
+| Date | Description |
+| ------- | ---------- |
+| 2021-12-31 | This is the first official release. |

@@ -1,4 +1,4 @@
-# RDMA Network Acceleration Feature Guide<a name="EN-US_TOPIC_0000002521389340"></a>
+# RDMA Network Acceleration Feature Guide
 
 ## Feature Description<a name="EN-US_TOPIC_0000002520751404"></a>
 
@@ -58,7 +58,7 @@ Ceph is used in the environment, including three client nodes and three server n
 
 |Item|Version|How to Obtain|
 |--|--|--|
-|Physical machine OS|openEuler 20.03 LTS SP4|[OS](https://mirrors.tools.huawei.com/openeuler/openEuler-20.03-LTS-SP4/ISO/aarch64/openEuler-20.03-LTS-SP4-aarch64-dvd.iso)|
+|Physical machine OS|openEuler 20.03 LTS SP4|[OS](https://repo.huaweicloud.com/openeuler/openEuler-20.03-LTS-SP4/ISO/aarch64/openEuler-20.03-LTS-SP4-aarch64-dvd.iso)|
 |Ceph|14.2.8|[Ceph](https://download.ceph.com/tarballs/ceph-14.2.8.tar.gz)|
 |UCX|1.14.1|[UCX](https://github.com/openucx/ucx/releases/download/v1.14.1/ucx-1.14.1-1.el7.src.rpm)|
 
@@ -68,7 +68,7 @@ Before compiling and deploying UCX, prepare the following software package.
 
 |Software Package|Description|How to Obtain|
 |--|--|--|
-|ceph-14.2.8-ucx.patch|Patch for adapting Ceph to UCX|[Patch](https://gitcode.com/boostkit/ceph/releases/download/v1.0.1/ceph-14.2.8-ucx.patch)|
+|ceph-14.2.8-ucx.patch|Patch for adapting Ceph to UCX|[Patch](https://gitcode.com/boostkit/ceph_BK/blob/master/ceph-14.2.8-ucx.patch)|
 
 ## Compiling and Installing the UCX and Ceph Packages<a name="EN-US_TOPIC_0000002520911394"></a>
 
@@ -240,10 +240,11 @@ Compile and deploy UCX open-source software packages, including compiling and ge
         ```
 
         >![](public_sys-resources/icon-note.gif) **NOTE**
-        >- The preceding IP addresses are only examples. Replace them as required. You can run the `ip a` command to obtain the actual IP addresses.
-        >- You are advised to set the host names of the server nodes to `ceph1`, `ceph2`, and `ceph3`.
-        >- You are advised to set the host names of the client nodes to `client1`, `client2`, and `client3`.
-        >- The preceding example uses three servers and three clients. Change the number of nodes based on the site requirements.
+        >
+        > - The preceding IP addresses are only examples. Replace them as required. You can run the `ip a` command to obtain the actual IP addresses.
+        > - You are advised to set the host names of the server nodes to `ceph1`, `ceph2`, and `ceph3`.
+        > - You are advised to set the host names of the client nodes to `client1`, `client2`, and `client3`.
+        > - The preceding example uses three servers and three clients. Change the number of nodes based on the site requirements.
 
 3. Configure NTP.
 
@@ -283,6 +284,7 @@ Compile and deploy UCX open-source software packages, including compiling and ge
             ```
 
             >![](public_sys-resources/icon-note.gif) **NOTE**
+            >
             >`restrict 192.168.3.0 mask 255.255.255.0` indicates the network segment and subnet mask of `ceph1`.
 
         4. Create an NTP file on `ceph2`, `ceph3`, and all client nodes.
@@ -355,12 +357,13 @@ Compile and deploy UCX open-source software packages, including compiling and ge
         ssh-copy-id client1
         ```
 
-    >![](public_sys-resources/icon-note.gif) **NOTE**
-    >After entering the first command `ssh-keygen -t rsa`, press `Enter` to use the default configuration.
+    > ![](public_sys-resources/icon-note.gif) **NOTE**
     >
-    >![](figures/zh-cn_image_0000002520911418.png)
+    > After entering the first command `ssh-keygen -t rsa`, press **Enter** to use the default configuration.
     >
-    >![](figures/zh-cn_image_0000002520751426.png)
+    > ![](figures/zh-cn_image_0000002520911418.png)
+    >
+    > ![](figures/zh-cn_image_0000002520751426.png)
 
 5. Set the permissive mode.
 
@@ -485,10 +488,11 @@ Install Ceph on all server and client nodes.
 
     If Ceph fails to be installed, configure a network proxy.
 
-    >![](public_sys-resources/icon-caution.gif) **CAUTION**
-    >During Ceph installation, verify that the version of gperftools is 2.7-7.
+    > ![](public_sys-resources/icon-caution.gif) **CAUTION**
     >
-    >![](figures/zh-cn_image_0000002551871403.png)
+    > During Ceph installation, verify that the version of gperftools is 2.7-7.
+    >
+    > ![](figures/zh-cn_image_0000002551871403.png)
 
 8. Install ceph-deploy on `ceph1`.
 
@@ -544,8 +548,9 @@ The Monitor (MON) monitors the status of the Ceph cluster. You only need to depl
 
 2. Configure global parameters and MON parameters for the Ceph cluster.
 
-    >![](public_sys-resources/icon-notice.gif) **NOTICE**
-    >Configuring nodes and using ceph-deploy to configure OSDs need to be performed in the `/etc/ceph` directory. Otherwise, an error may occur.
+    > ![](public_sys-resources/icon-notice.gif) **NOTICE**
+    >
+    > Configuring nodes and using ceph-deploy to configure OSDs need to be performed in the `/etc/ceph` directory. Otherwise, an error may occur.
 
     1. Open the `ceph.conf` file that is automatically generated in the `/etc/ceph` directory.
 
@@ -580,11 +585,12 @@ The Monitor (MON) monitors the status of the Ceph cluster. You only need to depl
 
     3. Press `Esc` to exit the insert mode. Type `:wq!` and press `Enter` to save the file and exit.
 
-    >![](public_sys-resources/icon-note.gif) **NOTE**
-    >In Ceph 14.2.8, when the BlueStore engine is used, the buffer of the BlueFS is enabled by default. As a result, the system memory may be fully occupied by the buffer or cache, causing performance deterioration. You can use either of the following methods to solve the problem:
+    > ![](public_sys-resources/icon-note.gif) **NOTE**
     >
-    >- If the cluster load is not heavy, set `bluefs_buffered_io` to `false`.
-    >- Periodically run the following command to forcibly reclaim the memory occupied by the buffer or cache:
+    > In Ceph 14.2.8, when the BlueStore engine is used, the buffer of the BlueFS is enabled by default. As a result, the system memory may be fully occupied by the buffer or cache, causing performance deterioration. You can use either of the following methods to solve the problem:
+    >
+    > - If the cluster load is not heavy, set `bluefs_buffered_io` to `false`.
+    > - Periodically run the following command to forcibly reclaim the memory occupied by the buffer or cache:
     >
     >    ```sh
     >    echo 3 > /proc/sys/vm/drop_caches
@@ -622,12 +628,13 @@ The Monitor (MON) monitors the status of the Ceph cluster. You only need to depl
     mon: 3 daemons, quorum ceph1,ceph2,ceph3 (age 25h)
     ```
 
-    >![](public_sys-resources/icon-note.gif) **NOTE**
-    >If MONs fails to be generated, the permission configuration may be incorrect. In this case, you need to configure the Ceph group and users.
+    > ![](public_sys-resources/icon-note.gif) **NOTE**
     >
-    >```sh
-    >/usr/sbin/groupadd ceph -g 167 -o -r 2>/dev/null || :/usr/sbin/useradd ceph -u 167 -o -r -g ceph -s /sbin/nologin -c "Ceph daemons" -d /var/lib/ceph 2>/dev/null || :
-    >```
+    > If MONs fails to be generated, the permission configuration may be incorrect. In this case, you need to configure the Ceph group and users.
+    >
+    > ```sh
+    > /usr/sbin/groupadd ceph -g 167 -o -r 2>/dev/null || :/usr/sbin/useradd ceph -u 167 -o -r -g ceph -s /sbin/nologin -c "Ceph daemons" -d /var/lib/ceph 2>/dev/null || :
+    > ```
 
 #### Deploying MGR<a name="EN-US_TOPIC_0000002551871385"></a>
 
@@ -789,11 +796,11 @@ Before enabling UCX, add UCX-related configurations and configure UCX environmen
     ms_async_ucx_max_recv=14
     ```
 
-    >![](public_sys-resources/icon-notice.gif) **NOTICE**
+    > ![](public_sys-resources/icon-notice.gif) **NOTICE**
     >
-    >- You can use `show_gids` to query device names and enter multiple network devices in `ms_async_ucx_device`. If the `show_gids` command is abnormal, see [Updating the NIC Firmware and Driver](#EN-US_TOPIC_0000002520911400).
-    >- To enable UCX on the front-end network, set `ms_public_type` to `async+ucx`. To enable UCX only on the back-end network, set both `ms_type` and `ms_public_type` to `async+posix`.
-    >- The IP addresses of `cluster_network` and `public_network` must be the same as those of the UCX devices (RoCE interfaces).
+    > - You can use `show_gids` to query device names and enter multiple network devices in `ms_async_ucx_device`. If the `show_gids` command is abnormal, see [Updating the NIC Firmware and Driver](#EN-US_TOPIC_0000002520911400).
+    > - To enable UCX on the front-end network, set `ms_public_type` to `async+ucx`. To enable UCX only on the back-end network, set both `ms_type` and `ms_public_type` to `async+posix`.
+    > - The IP addresses of `cluster_network` and `public_network` must be the same as those of the UCX devices (RoCE interfaces).
 
 4. Configure UCX environment variables on all server and client nodes. Add the following information to the blank area in `/etc/sysconfig/ceph`:
 
@@ -806,16 +813,17 @@ Before enabling UCX, add UCX-related configurations and configure UCX environmen
     UCX_PROTO_ENABLE=y
     ```
 
-    >![](public_sys-resources/icon-notice.gif) **NOTICE**
-    >- If UCX logs are required, add the following configurations:
+    > ![](public_sys-resources/icon-notice.gif) **NOTICE**
+    >
+    > - If UCX logs are required, add the following configurations:
     >
     >    ```ini
     >    UCX_LOG_FILE=/var/log/ceph/ucx_%p.log
     >    UCX_LOG_LEVEL=DEBUG
     >    ```
     >
-    >- `UCX_MEM_MMAP_HOOK_MODE` can be set to `reloc`, `bistro`, or `none`. If the TCMalloc huge page is enabled, set it to `reloc`.
-    >- If two interfaces need to be used at the same time, enable the UCX multi-rail function and set `UCX_MAX_RNDV_RAILS` and `UCX_MAX_EAGER_RAILS` to `2` or larger (value range: 1 to 4). The UCX multi-rail configuration can better balance traffic than the bond mode and achieve higher network bandwidth.
+    > - `UCX_MEM_MMAP_HOOK_MODE` can be set to `reloc`, `bistro`, or `none`. If the TCMalloc huge page is enabled, set it to `reloc`.
+    > - If two interfaces need to be used at the same time, enable the UCX multi-rail function and set `UCX_MAX_RNDV_RAILS` and `UCX_MAX_EAGER_RAILS` to `2` or larger (value range: 1 to 4). The UCX multi-rail configuration can better balance traffic than the bond mode and achieve higher network bandwidth.
 
 5. Modify the memory limit on all server and client nodes. Add the following information to the blank area in `/etc/security/limits.conf`:
 
@@ -861,8 +869,9 @@ Before enabling UCX, add UCX-related configurations and configure UCX environmen
 
 10. Before starting UCX, check whether all the UCX-related installation packages are installed.
 
-    >![](public_sys-resources/icon-notice.gif) **NOTICE**
-    >Ensure that the four installation packages have been installed. Otherwise, the OSD service may exit.
+    > ![](public_sys-resources/icon-notice.gif) **NOTICE**
+    >
+    > Ensure that the four installation packages have been installed. Otherwise, the OSD service may exit.
 
     ```sh
     rpm -qa | grep ucx
@@ -879,8 +888,9 @@ Before enabling UCX, add UCX-related configurations and configure UCX environmen
     systemctl start ceph.target
     ```
 
-    >![](public_sys-resources/icon-note.gif) **NOTE**
-    >In heavy-load scenarios, only 256 images are supported.
+    > ![](public_sys-resources/icon-note.gif) **NOTE**
+    >
+    > In heavy-load scenarios, only 256 images are supported.
 
 ## Configuring Flow Control and Checking Traffic (RoCE Networking)<a name="EN-US_TOPIC_0000002520911398"></a>
 
@@ -957,8 +967,9 @@ You can check whether the switch configuration takes effect on the service side 
 
 1. Configure queue priorities for RoCE NICs on all nodes.
 
-    >![](public_sys-resources/icon-notice.gif) **NOTICE**
-    >Even if you have bonded two interfaces (mode 0/2/4), you still need to configure the priority for each interface to achieve optimal network performance.
+    > ![](public_sys-resources/icon-notice.gif) **NOTICE**
+    >
+    > Even if you have bonded two interfaces (mode 0/2/4), you still need to configure the priority for each interface to achieve optimal network performance.
 
     ```sh
     mlnx_qos -i enp133s0f0 -f 1,0,0,0,0,0,0,0
@@ -1012,9 +1023,10 @@ You can check whether the switch configuration takes effect on the service side 
         cd /mnt/iso
         ```
 
-        >![](public_sys-resources/icon-note.gif) **NOTE**
-        >- `***.iso` indicates the ISO file corresponding to the NIC driver, for example, `onboard_driver_openEuler20.03.iso`.
-        >- `***.tgz` in the following commands indicates the driver package in the ISO file. Replace it with the actual name.
+        > ![](public_sys-resources/icon-note.gif) **NOTE**
+        >
+        > - `***.iso` indicates the ISO file corresponding to the NIC driver, for example, `onboard_driver_openEuler20.03.iso`.
+        > - `***.tgz` in the following commands indicates the driver package in the ISO file. Replace it with the actual name.
 
     2. Install the driver in either of the following ways:
         - Method 1: Decompress the installation package to install the driver.
@@ -1041,6 +1053,7 @@ You can check whether the switch configuration takes effect on the service side 
     ```
 
     >![](public_sys-resources/icon-note.gif) **NOTE**
+    >
     >If the driver is in use, stop related services so that the driver can be reloaded.
 
 7. Reboot the node.
@@ -1050,10 +1063,11 @@ You can check whether the switch configuration takes effect on the service side 
     ```
 
 >![](public_sys-resources/icon-note.gif) **NOTE**
->The recommended versions are as follows:
 >
->1. Firmware version: 16.32.1010 \(HUA0000000024\)
->2. Driver version:
+> The recommended versions are as follows:
+>
+> 1. Firmware version: 16.32.1010 \(HUA0000000024\)
+> 2. Driver version:
 >    - openEuler 20.03 (Arm): 24.01-0.3.3
 >    - openEuler 20.03 (x86): 5.8-1.1.2
 
@@ -1077,8 +1091,9 @@ mlxconfig -d 85:00.0 -y s PF_LOG_BAR_SIZE=8
 reboot
 ```
 
->![](public_sys-resources/icon-note.gif) **NOTE**
->`85:00.0` indicates the PCIe number of the NIC.
+> ![](public_sys-resources/icon-note.gif) **NOTE**
+>
+> `85:00.0` indicates the PCIe number of the NIC.
 
 ### How Can I Update the SP670 Driver to Support UCX?<a name="EN-US_TOPIC_0000002520751412"></a>
 
@@ -1200,3 +1215,9 @@ To ensure the production environment security and reduce attack risks, periodica
 |TCP|Transmission Control Protocol|
 |**U - Z**|
 |UCX|Unified Communication X|
+
+## Change History
+
+| Date | Description |
+|-------|----------|
+| 2024-09-30 | This is the first official release. |

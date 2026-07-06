@@ -1,4 +1,4 @@
-# EC Turbo Feature Guide<a name="EN-US_TOPIC_0000002521372544"></a>
+# EC Turbo Feature Guide
 
 ## Introduction<a name="EN-US_TOPIC_0000002520752324"></a>
 
@@ -16,23 +16,24 @@ Pay attention to the vulnerabilities reported on the Ceph official website and C
 
 **Hardware Compatibility<a name="section195mcpsimp"></a>**
 
-|Item|Specifications|
-|--|--|
-|CPU model|Kunpeng 916|
-|CPU model|Kunpeng 920|
+| Item | Specifications |
+|-----|------------|
+| CPU | Kunpeng 920 |
 
->![](public_sys-resources/icon-note.gif) **Note:**
->EC Turbo is available only for Kunpeng processors.
+>![](public_sys-resources/icon-note.gif) **NOTE**
+>
+> EC Turbo is available only for Kunpeng processors.
 
 **Software Compatibility<a name="section224mcpsimp"></a>**
 
-|Software|Version|
-|--|--|
-|OS|openEuler 20.03 LTS SP1|
-|Ceph|Ceph 14.2.8|
+| Software | Version |
+|------|-------------------------|
+| OS | openEuler 20.03 LTS SP1 |
+| Ceph | Ceph 14.2.8 |
 
->![](public_sys-resources/icon-note.gif) **Note:**
->Currently, EC Turbo adapts only to Ceph 14.2.8. If this feature needs to be used in other versions, you can modify the corresponding version based on open-source patches and APIs of this feature.
+>![](public_sys-resources/icon-note.gif) **NOTE**
+>
+> Currently, EC Turbo adapts only to Ceph 14.2.8. If this feature needs to be used in other versions, you can modify the corresponding version based on open-source patches and APIs of this feature.
 
 ## Application Scenarios<a name="EN-US_TOPIC_0000002551872301"></a>
 
@@ -87,10 +88,11 @@ Ceph data storage pools are classified into two types: replicated and erasure-co
 
 ### Applying the Ceph EC Patch<a name="EN-US_TOPIC_0000002520752318"></a>
 
->![](public_sys-resources/icon-note.gif) **Note:**
->If other SDS features need to be added, install patches by referring to the feature guides.
+>![](public_sys-resources/icon-note.gif) **NOTE**
+>
+> If other SDS features need to be added, install patches by referring to the feature guides.
 
-1. <a id="p270mcpsimp"></a>Obtain [ceph-14.2.8-ec_turbo-release.patch](https://gitcode.com/boostkit/ceph/releases/download/14.2.8/ceph-14.2.8-ec_turbo-release.patch) and save it to `/home/ceph-14.2.8`.
+1. <a id="p270mcpsimp"></a>Obtain [ceph-14.2.8-ec_turbo-release.patch](https://gitcode.com/boostkit/ceph_BK/releases/download/14.2.8/ceph-14.2.8-ec_turbo-release.patch) and save it to `/home/ceph-14.2.8`.
 
 2. Back up the original `ceph.spec` file. A new `ceph.spec` file will be generated when you apply the patch in the next step.
 
@@ -162,7 +164,7 @@ The openEuler software repository does not include the `liboath-devel` package. 
 
     2. Press **i** to enter the insert mode and add the following content to the file:
 
-        ```sh
+        ```ini
         [local-oath]
         name=local-oath
         baseurl=file:///home/rpm/oath
@@ -249,8 +251,9 @@ Currently, Ceph cannot be directly compiled on openEuler. You need to perform th
 
         For details about the modification, visit [GitHub](https://github.com/intel/isa-l/pull/172/files#diff-bc8cf88ff358e79a71c59968b5909fab53becf65dc8d644d02ee672907deabfd).
 
-        >![](public_sys-resources/icon-note.gif) **Note:**
-        >In the file, the red lines are to be deleted, and the green lines are to be added and modified.
+        > ![](public_sys-resources/icon-note.gif) **NOTE**
+        >
+        > In the file, the red lines are to be deleted, and the green lines are to be added and modified.
 
         After the upgrade is complete, the `aarch64` directory exists in `isa-l/erasure_code/`.
 
@@ -434,10 +437,11 @@ Currently, Ceph cannot be directly compiled on openEuler. You need to perform th
 
     For details, see [Installing the Ceph Software](https://www.hikunpeng.com/document/detail/en/kunpengsdss/ecosystemEnable/Ceph/kunpengcephblock_04_0004.html) in the *Ceph Block Storage Deployment Guide* (CentOS 7.6 & openEuler 20.03).
 
-    >![](public_sys-resources/icon-note.gif) **Note:**
-    >- In the deployment guide, the configured Ceph repository is an official Ceph repository, which is an RPM package that does not contain the EC Turbo feature. Therefore, you need to configure Ceph using the local repository.
-    >- Before installing Ceph, run the `yum list | grep ceph` command to ensure that Ceph is installed from the local repository. In the command, `myceph` is the name of the repository from which Ceph components are installed.
-    >- When installing Ceph, you may need to install other third-party software. Ensure that the network connection is normal.
+    > ![](public_sys-resources/icon-note.gif) **NOTE**
+    >
+    > - In the deployment guide, the configured Ceph repository is an official Ceph repository, which is an RPM package that does not contain the EC Turbo feature. Therefore, you need to configure Ceph using the local repository.
+    > - Before installing Ceph, run the `yum list | grep ceph` command to ensure that Ceph is installed from the local repository. In the command, `myceph` is the name of the repository from which Ceph components are installed.
+    > - When installing Ceph, you may need to install other third-party software. Ensure that the network connection is normal.
 
 ## Usage Guide<a name="EN-US_TOPIC_0000002551872295"></a>
 
@@ -447,9 +451,10 @@ Currently, Ceph cannot be directly compiled on openEuler. You need to perform th
 
     For details about how to create an EC storage pool, see [Creating a Storage Pool](https://www.hikunpeng.com/document/detail/en/kunpengsdss/ecosystemEnable/Ceph/kunpengcephobject_04_0011.html) in the *Ceph Object Storage Deployment Guide (CentOS 7.6 & openEuler 20.03)*.
 
-    >![](public_sys-resources/icon-note.gif) **Note:**
-    >- The `stripe_unit` value of the EC data pool is 256 KB. When `k=4` and `m=2`, the stripe size (`stripe_width`) is 1 MB. EC Turbo optimizes I/Os smaller than 1 MB.
-    >- EC Turbo uses the isa-l erasure code library. When creating an EC profile, enable the isa-l plugin, that is, add the `plugin=isa` parameter. In addition, specify `stripe_unit=256KB`. The command for creating an EC profile cannot be the command in the reference document. The correct command for creating an EC profile is:
+    >![](public_sys-resources/icon-note.gif) **NOTE**
+    >
+    > - The `stripe_unit` value of the EC data pool is 256 KB. When `k=4` and `m=2`, the stripe size (`stripe_width`) is 1 MB. EC Turbo optimizes I/Os smaller than 1 MB.
+    > - EC Turbo uses the isa-l erasure code library. When creating an EC profile, enable the isa-l plugin, that is, add the `plugin=isa` parameter. In addition, specify `stripe_unit=256KB`. The command for creating an EC profile cannot be the command in the reference document. The correct command for creating an EC profile is:
     >
     >    ```sh
     >    ceph osd erasure-code-profile set myprofile k=4 m=2 crush-failure-domain=osd crush-device-class=hdd plugin=isa stripe_unit=256K  
@@ -467,10 +472,11 @@ Currently, Ceph cannot be directly compiled on openEuler. You need to perform th
     bluestore_kpsallocator_enable = true
     ```
 
-    >![](public_sys-resources/icon-note.gif) **Note:**
-    >- The partial read option conflicts with the fast read option. To enable `osd_ec_partial_read`, check that `osd_pool_default_ec_fast_read` is disabled (disabled by default). Otherwise, partial read does not take effect.
-    >- The default values of the preceding five parameters are `true`. If you do not add these parameters to `ceph.conf`, the system uses the default values. To disable the EC Turbo feature, change the values of these parameters in `ceph.conf` to `false`.
-    >- Run the `ceph daemon osd.<OSD_number> config show | grep -E 'osd_ec_partial_read|osd_ec_partial_write|osd_ec_partial_update|osd_ec_zero_opt|bluestore_kpsallocator_enable'` command to check whether the parameters take effect.
+    >![](public_sys-resources/icon-note.gif) **NOTE**
+    >
+    > - The partial read option conflicts with the fast read option. To enable `osd_ec_partial_read`, check that `osd_pool_default_ec_fast_read` is disabled (disabled by default). Otherwise, partial read does not take effect.
+    > - The default values of the preceding five parameters are `true`. If you do not add these parameters to `ceph.conf`, the system uses the default values. To disable the EC Turbo feature, change the values of these parameters in `ceph.conf` to `false`.
+    > - Run the `ceph daemon osd.<OSD_number> config show | grep -E 'osd_ec_partial_read|osd_ec_partial_write|osd_ec_partial_update|osd_ec_zero_opt|bluestore_kpsallocator_enable'` command to check whether the parameters take effect.
 
 2. Configure EC Turbo log parameters `kpsec_log_fullpath`, `kpsec_log_level`, and `kpsec_log_memlogsize`.
 
@@ -487,12 +493,13 @@ Currently, Ceph cannot be directly compiled on openEuler. You need to perform th
     ......
     ```
 
-    >![](public_sys-resources/icon-note.gif) **Note:**
-    >- The main services of EC Turbo are encapsulated in the `libkps_ec` dynamic library. This dynamic library does not use the Ceph log system. Therefore, configure logging for it.
-    >- Generally, Ceph logs are stored in `/var/log/ceph`. If another directory is specified, ensure that the Ceph user can read and write the directory.
-    >- Log levels are classified into the file log level and memory log level, which must be defined separately. Generally, the content recorded in memory logs is more detailed than that recorded in file logs. The log level must be selected from \[`CRITICAL=0`, `ERROR=1`, `WARNING=2`, `INFORMATION=3`, `DEBUG=4`\]. The value of `mem_log_size` ranges from 100 to 1000.
-    >- If you modify kpsec log parameters when the OSD process is running, restart the OSD process for the modification to take effect.
-    >- If it is inconvenient to restart the OSD process, run the `ceph tell osd.<OSD_number> injectargs --<parameter_name>=<parameter_value>` command to modify the parameter online, and then run the `ceph tell osd.<OSD_number> reload_kps_conf` command to reload kpsec log parameters.
+    >![](public_sys-resources/icon-note.gif) **NOTE**
+    >
+    > - The main services of EC Turbo are encapsulated in the `libkps_ec` dynamic library. This dynamic library does not use the Ceph log system. Therefore, configure logging for it.
+    > - Generally, Ceph logs are stored in `/var/log/ceph`. If another directory is specified, ensure that the Ceph user can read and write the directory.
+    > - Log levels are classified into the file log level and memory log level, which must be defined separately. Generally, the content recorded in memory logs is more detailed than that recorded in file logs. The log level must be selected from \[`CRITICAL=0`, `ERROR=1`, `WARNING=2`, `INFORMATION=3`, `DEBUG=4`\]. The value of `mem_log_size` ranges from 100 to 1000.
+    > - If you modify kpsec log parameters when the OSD process is running, restart the OSD process for the modification to take effect.
+    > - If it is inconvenient to restart the OSD process, run the `ceph tell osd.<OSD_number> injectargs --<parameter_name>=<parameter_value>` command to modify the parameter online, and then run the `ceph tell osd.<OSD_number> reload_kps_conf` command to reload kpsec log parameters.
 
 3. Push `ceph.conf` to each node.
 
@@ -500,8 +507,9 @@ Currently, Ceph cannot be directly compiled on openEuler. You need to perform th
     ceph-deploy --overwrite-conf admin {node1} {node2}
     ```
 
-    >![](public_sys-resources/icon-note.gif) **Note:**
-    >`{nodeX}` is the name of a Ceph node. You can run the command to push `ceph.conf` to multiple nodes in the cluster at the same time. After the push is complete, restart the cluster.
+    >![](public_sys-resources/icon-note.gif) **NOTE**
+    >
+    > `{nodeX}` is the name of a Ceph node. You can run the command to push `ceph.conf` to multiple nodes in the cluster at the same time. After the push is complete, restart the cluster.
 
 4. Verify that EC Turbo takes effect.
     1. Change the log level of ceph-osd to `20/20`. For example, change the log level of OSD 3:
@@ -705,3 +713,10 @@ None
     ```sh
     rm -rf build/ && sh do_cmake.sh
     ```
+
+## Change History
+
+| Date  | Description       |
+|-------|----------|
+| 2024-12-30 | This is the second official release. <br>Added Ceph all-flash storage support for EC Turbo. |
+| 2022-12-17 | This is the first official release.|

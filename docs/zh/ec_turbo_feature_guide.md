@@ -92,7 +92,7 @@ Ceph的数据存储池分为副本和EC两种类型。EC是一种数据保护方
 > 
 > 如需叠加分布式存储其他特性，请参考相应的特性指南进行合入patch操作。
 
-1. <a id="p270mcpsimp"></a>获取[ceph-14.2.8-ec_turbo-release.patch](https://gitcode.com/boostkit/ceph/releases/download/14.2.8/ceph-14.2.8-ec_turbo-release.patch)放到`/home/ceph-14.2.8`。
+1. <a id="p270mcpsimp"></a>获取[ceph-14.2.8-ec_turbo-release.patch](https://gitcode.com/boostkit/ceph_BK/releases/download/14.2.8/ceph-14.2.8-ec_turbo-release.patch)放到`/home/ceph-14.2.8`。
 
 2. 备份原有的ceph.spec文件，下一步合入patch时生成新的ceph.spec。
 
@@ -719,5 +719,4 @@ yum install python3-pyOpenSSL.noarch
 | 发布日期  | 修改说明       |
 |-------|----------|
 | 2024-12-30 | 第二次正式发布。<br> EC Turbo支持Ceph全闪存。 |
-| 2024-12-30 | 第一次正式发布。|
-
+| 2022-12-17 | 第一次正式发布。|

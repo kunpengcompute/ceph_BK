@@ -1,4 +1,4 @@
-# SPDK I/O Acceleration Feature Guide<a name="EN-US_TOPIC_0000002552469309"></a>
+# SPDK I/O Acceleration Feature Guide
 
 ## Feature Description<a name="EN-US_TOPIC_0000002551432413"></a>
 
@@ -72,11 +72,8 @@ Example client IP addresses are listed in [**Table 2**](#client-IP-addresses).
 >![](public_sys-resources/icon-note.gif) **NOTE**
 >
 >- Management IP address: used for remote SSH machine management and configuration.
->
 >- Cluster network IP address: used for data synchronization between nodes in a cluster. The 25GE network port is recommended.
->
 >- Public network IP address: IP address of the storage node for other nodes to access. The 25GE network port is recommended.
->
 >- When clients are used as presses, ensure that the service port IP addresses of clients and the public network IP addresses of the cluster are in the same network segment. The 25GE network port is recommended.
 
 **Hardware Requirements<a name="section116628440251"></a>**
@@ -99,7 +96,7 @@ Example client IP addresses are listed in [**Table 2**](#client-IP-addresses).
 
 |Item|Version|How to Obtain|
 |--|--|--|
-|Physical machine OS|openEuler 20.03 LTS SP4|[OS](https://mirrors.tools.huawei.com/openeuler/openEuler-20.03-LTS-SP4/ISO/aarch64/openEuler-20.03-LTS-SP4-everything-aarch64-dvd.iso)|
+|Physical machine OS|openEuler 20.03 LTS SP4|[OS](https://repo.huaweicloud.com/openeuler/openEuler-20.03-LTS-SP4/ISO/aarch64/openEuler-20.03-LTS-SP4-aarch64-dvd.iso)|
 |openEuler image|openEuler 22.03 LTS SP4|[Image](https://repo.huaweicloud.com/openeuler/openEuler-22.03-LTS-SP4/docker_img/aarch64/openEuler-docker.aarch64.tar.xz)|
 |Ceph|17.2.7|[Ceph](https://download.ceph.com/tarballs/ceph-17.2.7.tar.gz)|
 |UCX|1.14.1|[1](https://github.com/openucx/ucx/releases/download/v1.14.1/ucx-1.14.1-1.el7.src.rpm)<br>[2](https://github.com/openucx/ucx/releases/download/v1.14.1/ucx-1.14.1.tar.gz)|
@@ -121,8 +118,8 @@ Before compiling and deploying UCX, prepare the following software packages.
 
 |Software Package|Description|How to Obtain|
 |--|--|--|
-|ceph-17.2.x-spdk.patch|Patch for adapting Ceph to SPDK|[Pacakge](https://gitcode.com/boostkit/ceph/releases/download/v1.0.2/ceph-17.2.x-spdk.patch)|
-|ceph-17.2.x-ucx.patch|Patch for adapting Ceph to UCX|[Package](https://gitcode.com/boostkit/ceph/releases/download/v1.0.2/ceph-17.2.x-ucx.patch)|
+|ceph-17.2.x-spdk.patch|Patch for adapting Ceph to SPDK|[Package](https://gitcode.com/boostkit/ceph_BK/blob/master/ceph-17.2.x-spdk.patch)|
+|ceph-17.2.x-ucx.patch|Patch for adapting Ceph to UCX|[Package](https://gitcode.com/boostkit/ceph_BK/blob/master/ceph-17.2.x-ucx.patch)|
 |BoostKit-KSAL_1.10.0.zip|Closed source KSAL package, which improves the computing efficiency of Ceph-related algorithms|[Package](https://kunpeng-repo.obs.cn-north-4.myhuaweicloud.com/Kunpeng%20BoostKit/Kunpeng%20BoostKit%2024.0.0/BoostKit-KSAL_1.10.0.zip)|
 
 ## Preparing the Compilation Environment<a name="EN-US_TOPIC_0000002551552409"></a>
@@ -141,6 +138,7 @@ To ensure unified management and deployment of applications and improve deployme
 >    |≥ 15.2.6|True|True|True|False|False|False|
 >    |≥ 16.2.1|False|True|True|False|True|True|
 >    |≥ 17.2.0|False|True|True|False|True|True|
+>    
 >    True indicates compatible, and False indicates incompatible.
 > 
 > - Ceph 17.2.7 requires Podman 2.0 or later. The Podman version in the openEuler 20.03 LTS SP4 community source is 0.10.1. You need to manually update Podman to a later version. This section uses Podman 3.4.4 as an example.
@@ -290,7 +288,8 @@ To avoid installing extra software in the cluster, you are advised to use anothe
 
     ![](figures/zh-cn_image_0000002551432433.png)
 
-    >![](public_sys-resources/icon-note.gif) **NOTE**
+    > ![](public_sys-resources/icon-note.gif) **NOTE**
+    >
     > - You can run the following commands to delete a container. `[CONTAINER_ID]` can be obtained by running the `podman ps` command.
     >
     >    ``` sh
@@ -416,7 +415,7 @@ Compile and deploy UCX open-source software packages, including compiling and ge
         ![](figures/zh-cn_image_0000002551552441.png)
 
     11. Press `Esc` to exit the insert mode. Type `:wq!` and press `Enter` to save the file and exit.
-   
+      
     12. Open the `ucx-1.14.1/src/uct/ib/base/ib_iface.c` file and locate line 735.
 
         ```sh
@@ -619,11 +618,12 @@ Compile the SPDK module in the compilation container to replace the default SPDK
 
 7. In the `/home` directory, download the selinux-policy code. The packaging result can be temporarily stored in `/root/rpmbuild/RPMS/noarch`.
 
-    >![](public_sys-resources/icon-note.gif) **NOTE**
-    >- You need to manually compile selinux-policy only when openEuler 22.03 LTS SP3 and Ceph 17.2.8 are used.
-    >- Ceph 17.2.8 requires selinux-policy 35.5-22 or later. The openEuler community does not release the RPM package of this version in openEuler 22.03 LTS SP3. A manual compilation is required.
-    >- If you use openEuler 22.03 LTS SP4, skip this step.
-    >- If you use Ceph 17.2.7 or earlier, skip this step.
+    > ![](public_sys-resources/icon-note.gif) **NOTE**
+    >
+    > - You need to manually compile selinux-policy only when openEuler 22.03 LTS SP3 and Ceph 17.2.8 are used.
+    > - Ceph 17.2.8 requires selinux-policy 35.5-22 or later. The openEuler community does not release the RPM package of this version in openEuler 22.03 LTS SP3. A manual compilation is required.
+    > - If you use openEuler 22.03 LTS SP4, skip this step.
+    > - If you use Ceph 17.2.7 or earlier, skip this step.
 
     ```sh
     cd /home
@@ -650,12 +650,13 @@ Compile the SPDK module in the compilation container to replace the default SPDK
     patch -p1 < ceph-17.2.x-spdk.patch
     ```
 
-    >![](public_sys-resources/icon-note.gif) **NOTE**
-    >You can run the `podman cp` command to copy files from a physical machine to the container.
+    > ![](public_sys-resources/icon-note.gif) **NOTE**
     >
-    >```sh
-    >podman cp ./ceph-17.2.x-spdk.patch openeuler2203sp4_build:/home/ceph-17.2.7
-    >```
+    > You can run the `podman cp` command to copy files from a physical machine to the container.
+    >
+    > ```sh
+    > podman cp ./ceph-17.2.x-spdk.patch openeuler2203sp4_build:/home/ceph-17.2.7
+    > ```
 
 10. After the preceding steps are complete, compile Ceph. For details, see [Compiling Ceph](#compiling-Ceph).
 
@@ -714,9 +715,10 @@ This section describes how to compile Ceph after SPDK and UCX are enabled.
     sed -i '2a\%define _unpackaged_files_terminate_build 0' ceph.spec
     ```
 
-    >![](public_sys-resources/icon-note.gif) **NOTE**
-    >1. In Ceph 17.2.8, OSDs occasionally restart. For details, see [How Can I Rectify an Error Reported When Ceph 17.2.8 Is Running Continuously?](#error-reported-during-continuous-running)
-    >2. If the Ceph source code `src/osd/SnapMapper.cc` conflicts with the fmt package version, a compilation error will be reported, as shown in [**Figure 1**](#BIOS-screen). In this case, comment out the code lines related to `fmt::format` in the `src/osd/SnapMapper.cc` file and recompile the code. Four modifications are involved:
+    > ![](public_sys-resources/icon-note.gif) **NOTE**
+    >
+    > 1. In Ceph 17.2.8, OSDs occasionally restart. For details, see [How Can I Rectify an Error Reported When Ceph 17.2.8 Is Running Continuously?](#error-reported-during-continuous-running)
+    > 2. If the Ceph source code `src/osd/SnapMapper.cc` conflicts with the fmt package version, a compilation error will be reported. In this case, comment out the code lines related to `fmt::format` in the `src/osd/SnapMapper.cc` file and recompile the code. Four modifications are involved:
     >    - Lines 233 to 234
     >    - Lines 272 to 275
     >    - Lines 321 to 324
@@ -777,9 +779,8 @@ This section describes how to compile Ceph after SPDK and UCX are enabled.
     >        331 }
     >    ```
     >
-    >    [**Figure 1** BIOS screen](#BIOS-screen) Compilation error<a name="fig697118018109"></a> 
     >    ![](figures/compilation-error.png "Compilation error-44")
-
+    
 2. Compile Ceph.
 
     ```sh
@@ -790,8 +791,9 @@ This section describes how to compile Ceph after SPDK and UCX are enabled.
     rpmbuild -bb /root/rpmbuild/SPECS/ceph.spec
     ```
 
-    >![](public_sys-resources/icon-note.gif) **NOTE**
-    >During Ceph compilation, you need to configure a network proxy so that the compilation container can access the Internet. For details, see [Preparing the Compilation Environment](#building-a-compilation-container-and-a-deployment-container-on-the-compilation-node).
+    > ![](public_sys-resources/icon-note.gif) **NOTE**
+    >
+    > During Ceph compilation, you need to configure a network proxy so that the compilation container can access the Internet. For details, see [Preparing the Compilation Environment](#building-a-compilation-container-and-a-deployment-container-on-the-compilation-node).
 
 3. Copy generated Ceph packages.
 
@@ -806,8 +808,9 @@ This section describes how to compile Ceph after SPDK and UCX are enabled.
     podman cp openeuler2203sp4_build:/home/local_rpm openeuler2203sp4_release:/home/
     ```
 
-    >![](public_sys-resources/icon-note.gif) **NOTE**
-    >The packages imported to the deployment container are all the packages involved in [Compiling Ceph](#compiling-Ceph), including python-asyncssh, python3-natsort, UCX packages, and Ceph packages.
+    > ![](public_sys-resources/icon-note.gif) **NOTE**
+    >
+    > The packages imported to the deployment container are all the packages involved in [Compiling Ceph](#compiling-Ceph), including python-asyncssh, python3-natsort, UCX packages, and Ceph packages.
 
 This section describes how to compile Ceph after SPDK and UCX are enabled.
 
@@ -828,8 +831,9 @@ Install each RPM package in the deployment container to create an image with the
     yum install ucx-1.14.1-1.aarch64.rpm ucx-cma-1.14.1-1.aarch64.rpm ucx-debuginfo-1.14.1-1.aarch64.rpm ucx-debugsource-1.14.1-1.aarch64.rpm ucx-devel-1.14.1-1.aarch64.rpm ucx-ib-1.14.1-1.aarch64.rpm ucx-rdmacm-1.14.1-1.aarch64.rpm ucx-static-1.14.1-1.aarch64.rpm -y
     ```
 
-    >![](public_sys-resources/icon-note.gif) **NOTE**
-    >Skip this step if only SPDK is required.
+    > ![](public_sys-resources/icon-note.gif) **NOTE**
+    >
+    > Skip this step if only SPDK is required.
 
 3. Install the Ceph dependencies.
 
@@ -839,14 +843,15 @@ Install each RPM package in the deployment container to create an image with the
     pip install pycryptodome==3.19.1
     ```
 
-    >![](public_sys-resources/icon-note.gif) **NOTE**
-    >- To prevent deployment failures caused by earlier versions of the third-party Python library pycryptodome, you are advised to upgrade it as follows:
+    > ![](public_sys-resources/icon-note.gif) **NOTE**
+    >
+    > - To prevent deployment failures caused by earlier versions of the third-party Python library pycryptodome, you are advised to upgrade it as follows:
     >
     >    ```sh
     >    pip install pycryptodome==3.19.1
     >    ```
     >
-    >- To prevent the `No module named 'kubernetes.client.models.v1_event` error during MGR deployment, you need to install a dependency as follows:
+    > - To prevent the `No module named 'kubernetes.client.models.v1_event` error during MGR deployment, you need to install a dependency as follows:
     >
     >    ```sh
     >    pip3 install kubernetes==18.20.0
@@ -854,9 +859,10 @@ Install each RPM package in the deployment container to create an image with the
 
 4. If Ceph 17.2.8 and openEuler 22.03 LTS SP3 are used, install the selinux-policy dependency before installing Ceph.
 
-    >![](public_sys-resources/icon-note.gif) **NOTE**
-    >- For details about how to obtain the dependency, see [Enabling SPDK](#enabling-spdk).
-    >- When deploying Ceph 17.2.7, you need to install selinux-policy for openEuler 22.03 LTS SP3 and earlier versions. If the OS version is openEuler 22.03 LTS SP4, skip this step.
+    > ![](public_sys-resources/icon-note.gif) **NOTE**
+    >
+    > - For details about how to obtain the dependency, see [Enabling SPDK](#enabling-spdk).
+    > - When deploying Ceph 17.2.7, you need to install selinux-policy for openEuler 22.03 LTS SP3 and earlier versions. If the OS version is openEuler 22.03 LTS SP4, skip this step.
 
     ```sh
     yum install noarch/selinux-policy-35.5-23.noarch.rpm noarch/selinux-policy-devel-35.5-23.noarch.rpm noarch/selinux-policy-help-35.5-23.noarch.rpm noarch/selinux-policy-minimum-35.5-23.noarch.rpm noarch/selinux-policy-mls-35.5-23.noarch.rpm noarch/selinux-policy-sandbox-35.5-23.noarch.rpm noarch/selinux-policy-targeted-35.5-23.noarch.rpm -y
@@ -878,8 +884,9 @@ Install each RPM package in the deployment container to create an image with the
     rpm -ivh libksal-release-1.10.0.oe1.aarch64.rpm
     ```
 
-    >![](public_sys-resources/icon-note.gif) **NOTE**
-    >To obtain the KSAL software package, see [Obtaining Software Packages](#obtaining-software-packages). You are advised to upload the package to the `/home` directory.
+    > ![](public_sys-resources/icon-note.gif) **NOTE**
+    >
+    > To obtain the KSAL software package, see [Obtaining Software Packages](#obtaining-software-packages). You are advised to upload the package to the `/home` directory.
 
 7. SPDK requires user-mode huge pages. Privilege escalation is required for ceph-osd.
 
@@ -926,10 +933,11 @@ Install each RPM package in the deployment container to create an image with the
     podman commit 688247c8b260 [IP]:5000/ceph/ceph_release:v17.2.7
     ```
 
-    >![](public_sys-resources/icon-note.gif) **NOTE**
-    >- `688247c8b260` is the ID of the `openeuler2203sp4_release` container. You can run the `podman ps` command to obtain the container ID.
-    >- `[IP]` indicates the actual IP address of the local host.
-    >- Before committing the container, remove installed RPM packages from the `/home` directory to reduce the image size.
+    > ![](public_sys-resources/icon-note.gif) **NOTE**
+    >
+    > - `688247c8b260` is the ID of the `openeuler2203sp4_release` container. You can run the `podman ps` command to obtain the container ID.
+    > - `[IP]` indicates the actual IP address of the local host.
+    > - Before committing the container, remove installed RPM packages from the `/home` directory to reduce the image size.
 
 11. Export the deployment image.
 
@@ -937,8 +945,9 @@ Install each RPM package in the deployment container to create an image with the
     podman save -o ceph_release.tar a6e8aff2def8
     ```
 
-    >![](public_sys-resources/icon-note.gif) **NOTE**
-    >`a6e8aff2def8` is the ID of the image committed in [10](#li634218914416). You can run `podman images` to obtain the image ID.
+    > ![](public_sys-resources/icon-note.gif) **NOTE**
+    >
+    > `a6e8aff2def8` is the ID of the image committed in [10](#li634218914416). You can run `podman images` to obtain the image ID.
 
 Install each RPM package in the deployment container to create an image with the minimum specifications.
 
@@ -955,7 +964,8 @@ To start the Ceph cluster, the image needs to be dynamically pulled from the rem
     ```
 
     >![](public_sys-resources/icon-note.gif) **NOTE**
-    >- If you cannot access the Internet, run the following commands or manually download the package and import it to the current node.
+    >
+    > - If you cannot access the Internet, run the following commands or manually download the package and import it to the current node.
     >
     >    ```sh
     >    git config --global http.sslVerify false
@@ -963,13 +973,13 @@ To start the Ceph cluster, the image needs to be dynamically pulled from the rem
     >    git clone https://github.com/NotGlop/docker-drag.git
     >    ```
     >
-    >- Start the local image repository.
+    > - Start the local image repository.
     >
     >    ```sh
     >    podman load -i registry_2.tar
     >    ```
     >
-    >- If the image cannot be pulled when a proxy is used to access the Internet, check the proxy setting. Podman depends on the environment variables `HTTP_PROXY` and `HTTPS_PROXY` for Internet access.
+    > - If the image cannot be pulled when a proxy is used to access the Internet, check the proxy setting. Podman depends on the environment variables `HTTP_PROXY` and `HTTPS_PROXY` for Internet access.
 
 2. Modify the container configuration file `/etc/containers/registries.conf`.
 
@@ -981,8 +991,9 @@ To start the Ceph cluster, the image needs to be dynamically pulled from the rem
     insecure = true
     ```
 
-    >![](public_sys-resources/icon-note.gif) **NOTE**
-    >Replace `[IP]` with the actual public network IP address of the current node.
+    > ![](public_sys-resources/icon-note.gif) **NOTE**
+    >
+    > Replace `[IP]` with the actual public network IP address of the current node.
 
 3. Modify the local repository settings.
 
@@ -991,8 +1002,9 @@ To start the Ceph cluster, the image needs to be dynamically pulled from the rem
     podman run -d -p 5000:5000 -v /home/registry-data:/var/lib/registry --restart always --name registry docker.io/library/registry:2
     ```
 
-    >![](public_sys-resources/icon-note.gif) **NOTE**
-    >`docker.io/library/registry` is the image name used by the image repository configured in [1](#en-us_topic_0000001204870207_li1754643514419). You can run `podman images` to check.
+    > ![](public_sys-resources/icon-note.gif) **NOTE**
+    >
+    > `docker.io/library/registry` is the image name used by the image repository configured in [1](#en-us_topic_0000001204870207_li1754643514419). You can run `podman images` to check.
 
 4. Import the Ceph deployment image generated in [Creating a Deployment Image](#skip_001).
 
@@ -1008,16 +1020,17 @@ To start the Ceph cluster, the image needs to be dynamically pulled from the rem
     podman rmi 8bbba7d5cc80
     ```
 
-    >![](public_sys-resources/icon-note.gif) **NOTE**
-    >- `8bbba7d5cc80` indicates the image ID corresponding to `ceph_release.tar`, and `[IP]` indicates the local IP address. Replace them with the actual values.
-    >- If the `Gateway Time-out` error is reported during the push, check whether any proxy is configured. If yes, run the following commands to disable proxy configurations:
+    > ![](public_sys-resources/icon-note.gif) **NOTE**
+    >
+    > - `8bbba7d5cc80` indicates the image ID corresponding to `ceph_release.tar`, and `[IP]` indicates the local IP address. Replace them with the actual values.
+    > - If the `Gateway Time-out` error is reported during the push, check whether any proxy is configured. If yes, run the following commands to disable proxy configurations:
     >
     >    ```sh
     >    unset http_proxy
     >    unset https_proxy
     >    ```
     >
-    >- After the image is pushed to the local repository, its tag may conflict with that of a package in the local repository. You need to delete the local Ceph image.
+    > - After the image is pushed to the local repository, its tag may conflict with that of a package in the local repository. You need to delete the local Ceph image.
 
 6. Modify `DEFAULT_IMAGE` in the `cephadm` file.
     1. Open the `/usr/sbin/cephadm` file.
@@ -1045,10 +1058,11 @@ To start the Ceph cluster, the image needs to be dynamically pulled from the rem
 
     ![](figures/zh-cn_image_0000002551432451.png)
 
-    >![](public_sys-resources/icon-note.gif) **NOTE**
-    >- The `/usr/sbin/cephadm` file must have the SPDK patch applied in its source code.
-    >- The line to be modified is in the `run_cmd` function.
-    >- If you have [applied ceph-17.2.x-ucx.patch](#applying-patch), skip this step.
+    > ![](public_sys-resources/icon-note.gif) **NOTE**
+    >
+    > - The `/usr/sbin/cephadm` file must have the SPDK patch applied in its source code.
+    > - The line to be modified is in the `run_cmd` function.
+    > - If you have [applied ceph-17.2.x-ucx.patch](#applying-patch), skip this step.
 
 8. Copy the `ceph-17.2.7/src/cephadm/cephadm` file applied with the SPDK patch from the compilation container on the compilation node to the `/usr/sbin/` directory on physical machines of `ceph1`, `ceph2`, `ceph3`, `client1`, `client2`, and `client3`.
 
@@ -1089,9 +1103,10 @@ This section uses three servers and three clients as an example.
         192.168.3.162 client3
         ```
 
-        >![](public_sys-resources/icon-note.gif) **NOTE**
-        >- The example IP addresses are those planned in [environment networking](#environment-requirements). Replace them with the actual ones. You can run the `ip a` command to obtain the actual IP addresses.
-        >- In this document, the cluster consists of three server nodes and three client nodes. Modify the commands based on the actual number of nodes.
+        > ![](public_sys-resources/icon-note.gif) **NOTE**
+        >
+        > - The example IP addresses are those planned in [environment networking](#environment-requirements). Replace them with the actual ones. You can run the `ip a` command to obtain the actual IP addresses.
+        > - In this document, the cluster consists of three server nodes and three client nodes. Modify the commands based on the actual number of nodes.
 
     3. Press `Esc` to exit the insert mode. Type `:wq!` and press `Enter` to save the file and exit.
 
@@ -1110,9 +1125,10 @@ This section uses three servers and three clients as an example.
     systemctl status firewalld
     ```
 
-    >![](public_sys-resources/icon-note.gif) **NOTE**
-    >- Disable the firewall only in a trusted intranet or offline test environment.
-    >- In the production environment, the firewall must be enabled and required ports must be precisely allowed. For example, the MON port is 6789, and the OSD port ranges from 6800 to 7300.
+    > ![](public_sys-resources/icon-note.gif) **NOTE**
+    >
+    > - Disable the firewall only in a trusted intranet or offline test environment.
+    > - In the production environment, the firewall must be enabled and required ports must be precisely allowed. For example, the MON port is 6789, and the OSD port ranges from 6800 to 7300.
 
 5. Disable SELinux.
 
@@ -1121,9 +1137,10 @@ This section uses three servers and three clients as an example.
     sed -i 's/=permissive/=disabled/g' /etc/selinux/config
     ```
 
-    >![](public_sys-resources/icon-note.gif) **NOTE**
-    >- Disabling SELinux will invalidate the MAC mechanism of the system. You are advised to disable SELinux only in the test environment.
-    >- In the production environment, the enforcing mode must be retained, and the audit2allow tool must be used to generate custom policies that adapt to services.
+    > ![](public_sys-resources/icon-note.gif) **NOTE**
+    >
+    > - Disabling SELinux will invalidate the MAC mechanism of the system. You are advised to disable SELinux only in the test environment.
+    > - In the production environment, the enforcing mode must be retained, and the audit2allow tool must be used to generate custom policies that adapt to services.
 
 6. Configure clock synchronization on `ceph1`, `ceph2`, and `ceph3`.
     1. Install the chrony service.
@@ -1148,9 +1165,10 @@ This section uses three servers and three clients as an example.
         EOF
         ```
 
-        >![](public_sys-resources/icon-note.gif) **NOTE**
-        >- `[IP1]` indicates the IP address or domain name of the server that provides the clock service on the network, for example, 192.168.3.166.
-        >- `[IP/MASK]` indicates the IP address range of the local network, for example, 192.168.1.0/24. Only devices within this subnet can synchronize the clock with the server.
+        > ![](public_sys-resources/icon-note.gif) **NOTE**
+        >
+        > - `[IP1]` indicates the IP address or domain name of the server that provides the clock service on the network, for example, 192.168.3.166.
+        > - `[IP/MASK]` indicates the IP address range of the local network, for example, 192.168.1.0/24. Only devices within this subnet can synchronize the clock with the server.
 
     4. Restart chronyd.
 
@@ -1210,8 +1228,9 @@ Create a cluster configuration file on `ceph1` to boot a Ceph container cluster.
         bluestore_rocksdb_options = use_direct_reads=true,use_direct_io_for_flush_and_compaction=true,compression=kNoCompression,max_write_buffer_number=128,min_write_buffer_number_to_merge=32,recycle_log_file_num=64,compaction_style=kCompactionStyleLevel,write_buffer_size=4M,target_file_size_base=4M,max_background_compactions=2,level0_file_num_compaction_trigger=64,level0_slowdown_writes_trigger=128,level0_stop_writes_trigger=256,max_bytes_for_level_base=6GB,compaction_threads=2,max_bytes_for_level_multiplier=8,flusher_threads=2
         ```
 
-        >![](public_sys-resources/icon-note.gif) **NOTE**
-        >For more information about Ceph tuning configuration and configuration description, see "Ceph Tuning" in [Ceph Object Storage Tuning Guide](https://www.hikunpeng.com/document/detail/en/kunpengsdss/ecosystemEnable/Ceph/kunpengcephobject_05_0012.html).
+        > ![](public_sys-resources/icon-note.gif) **NOTE**
+        >
+        > For more information about Ceph tuning configuration and configuration description, see "Ceph Tuning" in [Ceph Object Storage Tuning Guide](https://www.hikunpeng.com/document/detail/en/kunpengsdss/ecosystemEnable/Ceph/kunpengcephobject_05_0012.html).
 
     3. Press `Esc` to exit the insert mode. Type `:wq!` and press `Enter` to save the file and exit.
 
@@ -1221,10 +1240,11 @@ Create a cluster configuration file on `ceph1` to boot a Ceph container cluster.
     cephadm bootstrap -c ceph.conf --mon-ip 192.168.3.166 --cluster-network 192.168.4.0/24 --skip-monitoring-stack
     ```
 
-    >![](public_sys-resources/icon-note.gif) **NOTE**
-    >- --`mon-ip`: IP address of the frontend public network
-    >- --`cluster-network`: IP address of the backend cluster network
-    >- -`c ceph.conf`: (Optional) It can be used to change the default Ceph configuration.
+    > ![](public_sys-resources/icon-note.gif) **NOTE**
+    >
+    > - --`mon-ip`: IP address of the frontend public network
+    > - --`cluster-network`: IP address of the backend cluster network
+    > - -`c ceph.conf`: (Optional) It can be used to change the default Ceph configuration.
 
     ![](figures/zh-cn_image_0000002520352452.png)
 
@@ -1255,8 +1275,9 @@ Create a cluster configuration file on `ceph1` to boot a Ceph container cluster.
     ceph orch host add ceph3 --labels _admin
     ```
 
-    >![](public_sys-resources/icon-note.gif) **NOTE**
-    >It takes 3 to 5 minutes for the Ceph cluster on `ceph2` and `ceph3` to start after the commands are executed.
+    > ![](public_sys-resources/icon-note.gif) **NOTE**
+    >
+    > It takes 3 to 5 minutes for the Ceph cluster on `ceph2` and `ceph3` to start after the commands are executed.
 
 7. Check whether the hosts are added.
 
@@ -1312,12 +1333,13 @@ Before enabling UCX, you need to configure UCX parameters and modify the configu
 
     ![](figures/zh-cn_image_0000002520032446.png)
 
-    >![](public_sys-resources/icon-note.gif) **NOTE**
-    >- You can run the `show_gids` command to obtain device names and configure multiple network devices in `ms_async_ucx_device`. The selected device(s) must contain the public network IP address and cluster network IP address configured for the node. If the command is not supported, update the NIC firmware and driver. For details, see [Updating the NIC Firmware and Driver](#updating-the-NIC-firmware-and-driver).
-    >- `[fsid]` indicates the Ceph cluster FSID. You can run the `cephadm ls` command to obtain.
-    >- Ensure that the RDMA network device names of server nodes are the same. Otherwise, OSD nodes cannot be started. You can use tools such as `/usr/lib/udev/rdma_rename` to rename RDMA network devices. The RDMA network device names of client nodes do not need to be the same.
-    >- The IP addresses of `cluster_network` and `public_network` must be the same as those of the UCX devices (RoCE/IB interfaces).
-    >- If `ms_async_ucx_event_polling` is set to `true`, event polling is enabled. This reduces latency, improves cluster throughput, and optimizes concurrency. However, the CPU usage increases. In some scenarios where no event is generated, resources are wasted and the system debugging complexity increases. You can toggle this function as required.
+    > ![](public_sys-resources/icon-note.gif) **NOTE**
+    >
+    > - You can run the `show_gids` command to obtain device names and configure multiple network devices in `ms_async_ucx_device`. The selected device(s) must contain the public network IP address and cluster network IP address configured for the node. If the command is not supported, update the NIC firmware and driver. For details, see [Updating the NIC Firmware and Driver](#updating-the-NIC-firmware-and-driver).
+    > - `[fsid]` indicates the Ceph cluster FSID. You can run the `cephadm ls` command to obtain.
+    > - Ensure that the RDMA network device names of server nodes are the same. Otherwise, OSD nodes cannot be started. You can use tools such as `/usr/lib/udev/rdma_rename` to rename RDMA network devices. The RDMA network device names of client nodes do not need to be the same.
+    > - The IP addresses of `cluster_network` and `public_network` must be the same as those of the UCX devices (RoCE/IB interfaces).
+    > - If `ms_async_ucx_event_polling` is set to `true`, event polling is enabled. This reduces latency, improves cluster throughput, and optimizes concurrency. However, the CPU usage increases. In some scenarios where no event is generated, resources are wasted and the system debugging complexity increases. You can toggle this function as required.
 
 4. Synchronize the MON modification to MGRs and OSDs on all nodes.
 
@@ -1361,14 +1383,10 @@ OSD is a Ceph cluster data management service. To add an OSD on a drive, the fol
 >    2. On the BIOS screen, choose `Advanced` > `MISC Config` > `Support Smmu` to access the SMMU configuration screen.
 >
 >        <img src="figures/BIOS-screen.png" width="50%"/>
->
->        **Figure 1** BIOS screen<a name="fig1887734204618"></a><a id="BIOS-screen"></a>
->        
+> 
 >    3. Set `Support Smmu` to `Disabled` and press `F10` to save the configuration and exit. (The configuration is permanently valid.)
->
+>        
 >        <img src="figures/disabling-SMMU.png" width="50%"/>
->
->        **Figure 2** Disabling SMMU<a name="fig10084010483"></a><a id="disabling-SMMU"></a>
 >
 >- The deployment must be performed on all physical machines of server nodes.
 >- The drive must have no partition.
@@ -1379,8 +1397,9 @@ OSD is a Ceph cluster data management service. To add an OSD on a drive, the fol
 
 1. Change the huge page size.
 
-    >![](public_sys-resources/icon-note.gif) **NOTE**
-    >To deploy SPDK, the OS must support huge pages. If the huge page size is not 2 MB, perform the following operations to change the size.
+    > ![](public_sys-resources/icon-note.gif) **NOTE**
+    >
+    > To deploy SPDK, the OS must support huge pages. If the huge page size is not 2 MB, perform the following operations to change the size.
 
     1. Open the `/boot/efi/EFI/openEuler/grub.cfg` file.
 
@@ -1440,10 +1459,11 @@ OSD is a Ceph cluster data management service. To add an OSD on a drive, the fol
 
     - Method 2: Use the configuration file.
 
-        >![](public_sys-resources/icon-note.gif) **NOTE**
-        >You can use the .yaml configuration file to start a service for deploying OSDs. This mode has the following advantages:
-        >- You can specify devices.
-        >- You can specify OSD IDs.
+        > ![](public_sys-resources/icon-note.gif) **NOTE**
+        >
+        > You can use the .yaml configuration file to start a service for deploying OSDs. This mode has the following advantages:
+        > - You can specify devices.
+        > - You can specify OSD IDs.
 
         1. Create an `osd.yaml` file and add the following content to the file to specify available devices.
             1. Open the `osd.yaml` file.
@@ -1463,9 +1483,10 @@ OSD is a Ceph cluster data management service. To add an OSD on a drive, the fol
                   bdfs: "0000:84:00.0"
                 ```
 
-                >![](public_sys-resources/icon-note.gif) **NOTE**
-                >- `osd_id`: OSD service ID. The value must be unique in the cluster.
-                >- Devices specified by the `bdfs` field must be taken over by the uio driver. Run the command in [5](#en-us_topic_0000001173276984_en-us_topic_0266583442_en-us_topic_0266851355_li10464154919390) to check whether the driver of the NVMe device is uio\_pci\_generic. If not, the device is not taken over by the uio driver. In this case, run the command in [3](#li11112652145119) to switch the driver.
+                > ![](public_sys-resources/icon-note.gif) **NOTE**
+                >
+                > - `osd_id`: OSD service ID. The value must be unique in the cluster.
+                > - Devices specified by the `bdfs` field must be taken over by the uio driver. Run the command in [5](#en-us_topic_0000001173276984_en-us_topic_0266583442_en-us_topic_0266851355_li10464154919390) to check whether the driver of the NVMe device is uio\_pci\_generic. If not, the device is not taken over by the uio driver. In this case, run the command in [3](#li11112652145119) to switch the driver.
 
             3. Press `Esc` to exit the insert mode. Type `:wq!` and press `Enter` to save the file and exit.
 
@@ -1483,9 +1504,10 @@ OSD is a Ceph cluster data management service. To add an OSD on a drive, the fol
             Example command for enabling this function: cephadm spdkosd -vv create
             ```
 
-            >![](public_sys-resources/icon-note.gif) **NOTE**
-            >- The `/mnt/osd_xx` directory is used to mount huge pages to enable SPDK. After the `/mnt` directory is mounted with an image, its permission may change to read-only. Verify that this directory on the physical machines has the write permission.
-            >- This command must be executed on `ceph1` to `ceph3` in sequence.
+            > ![](public_sys-resources/icon-note.gif) **NOTE**
+            >
+            > - The `/mnt/osd_xx` directory is used to mount huge pages to enable SPDK. After the `/mnt` directory is mounted with an image, its permission may change to read-only. Verify that this directory on the physical machines has the write permission.
+            > - This command must be executed on `ceph1` to `ceph3` in sequence.
 
 8. Change the upper limit of the OSD memory of `ceph1`, `ceph2`, and `ceph3` to 20 GB.
 
@@ -1522,8 +1544,9 @@ Ceph client deployment enables storage access between the client nodes and the C
     podman run --name client1 --hostname client1 --privileged --net=host --ipc=host -dti localhost/ceph_release:v17.2.7 /usr/sbin/init
     ```
 
-    >![](public_sys-resources/icon-note.gif) **NOTE**
-    >Replace `[IMAGE_ID]` with the actual image ID. You can run the `podman images` command to obtain.
+    > ![](public_sys-resources/icon-note.gif) **NOTE**
+    >
+    > Replace `[IMAGE_ID]` with the actual image ID. You can run the `podman images` command to obtain.
 
 2. Synchronize the configuration file from the server to the client.
 
@@ -1539,8 +1562,9 @@ Ceph client deployment enables storage access between the client nodes and the C
     ms_async_ucx_device = mlx5_xxx:1      # Replace mlx5_xxx with the device(s) in show_gids.
     ```
 
-    >![](public_sys-resources/icon-note.gif) **NOTE**
-    >You can enter multiple network device names in `ms_async_ucx_device`. The management IP address and public network IP address of the client node must be configured for the device(s) specified by this field.
+    > ![](public_sys-resources/icon-note.gif) **NOTE**
+    >
+    > You can enter multiple network device names in `ms_async_ucx_device`. The management IP address and public network IP address of the client node must be configured for the device(s) specified by this field.
 
     Add the following configurations to `/etc/ceph/ceph.conf`:
 
@@ -1563,11 +1587,12 @@ Ceph client deployment enables storage access between the client nodes and the C
 5. Go to the client container and check the cluster status.
 
     >![](public_sys-resources/icon-note.gif) **NOTE**
-    >By default, Ceph 17 automatically scales the number of placement groups (PGs) according to the number of OSDs. Ceph administrators can manually adjust the number of PGs to optimize the system and avoid unexpected short-term performance fluctuation. If auto scaling is not required, you can run the following command to disable it:
     >
-    >```sh
-    >ceph osd pool set ${pool_name} pg_autoscale_mode off
-    >```
+    > By default, Ceph 17 automatically scales the number of placement groups (PGs) according to the number of OSDs. Ceph administrators can manually adjust the number of PGs to optimize the system and avoid unexpected short-term performance fluctuation. If auto scaling is not required, you can run the following command to disable it:
+    >
+    > ```sh
+    > ceph osd pool set ${pool_name} pg_autoscale_mode off
+    > ```
 
     ```sh
     podman exec -it client1 /bin/bash
@@ -1667,8 +1692,9 @@ You can check whether the switch configuration takes effect on the service side 
 
 1. Configure queue priorities for RoCE NICs on all nodes.
 
-    >![](public_sys-resources/icon-note.gif) **NOTE**
-    >Even if you have bonded two interfaces (mode 0/2/4), you still need to configure the priority for each interface to achieve better network performance.
+    > ![](public_sys-resources/icon-note.gif) **NOTE**
+    >
+    > Even if you have bonded two interfaces (mode 0/2/4), you still need to configure the priority for each interface to achieve better network performance.
 
     ```sh
     mlnx_qos -i enp133s0f0 -f 1,0,0,0,0,0,0,0
@@ -1700,14 +1726,14 @@ You can check whether the switch configuration takes effect on the service side 
     watch -n 1 "ethtool -S enp133s0f1 | grep prio"
     ```
 
+    Example command output for enp133s0f0:
+
     ![](figures/example-command-output-for-enp133s0f0.png "Example command output for enp133s0f0-63")
-
-    **Figure 1** Example command output for enp133s0f0<a id="example-command-output-for-enp133s0f0"></a>
     
+    Example command output for enp133s0f1:
+
     ![](figures/example-command-output-for-enp133s0f1.png "Example command output for enp133s0f1-64")
-
-    **Figure 2** Example command output for enp133s0f1<a id="example-command-output-for-enp133s0f1"></a>
-
+    
 ## FAQs<a name="EN-US_TOPIC_0000002520032432"></a>
 
 ### How Can I Rectify an Error Reported When Ceph 17.2.8 Is Running Continuously?<a id="error-reported-during-continuous-running"></a>
@@ -1798,8 +1824,6 @@ Ceph 17.2.8 has known issues. For details, see the [Ceph community PR](https://g
     ```
 
     ![](figures/comparison-after-modification.png "Comparison after modification-65")
-
-    **Figure 1** Comparison after modification<a id="comparison-after-modification"></a>
     
 2. Recompile and deploy Ceph.
 
@@ -1807,11 +1831,9 @@ Ceph 17.2.8 has known issues. For details, see the [Ceph community PR](https://g
 
 **Symptom<a name="section6838184010412"></a>**
 
-When a service operation is performed, an error message is displayed, as shown in [**Figure 1** Error message](#error-message).
+When a service operation is performed, an error message is displayed, as shown in the following figures.
 
 ![](figures/zh-cn_image_0000002551432445.png)
-
-**Figure 1** Error message<a id="error-message"></a>
 
 ![](figures/error-message.png "Error message-67")
 
@@ -1829,8 +1851,9 @@ The RCache size registered by the UCX service exceeds the hardware buffer size l
     reboot
     ```
 
-    >![](public_sys-resources/icon-note.gif) **NOTE**
-    >`85:00.0` indicates the PCIe number of the NIC. You can run the `lspci | grep Mellanox` command to obtain the number.
+    > ![](public_sys-resources/icon-note.gif) **NOTE**
+    >
+    > `85:00.0` indicates the PCIe number of the NIC. You can run the `lspci | grep Mellanox` command to obtain the number.
 
 2. Bond network interfaces.
     1. Create a bond device.
@@ -1904,11 +1927,9 @@ The RCache size registered by the UCX service exceeds the hardware buffer size l
 
 **Symptom<a name="section6838184010412"></a>**
 
-When a service operation is performed, an error message is displayed, as shown in [**Figure 1** Error message](#error-message_1).
+When a service operation is performed, an error message is displayed, as shown in the following figure.
 
 ![](figures/error-message.png "Error message-69")
-
-**Figure 1** Error message<a name="fig480014722217"></a><a id="error-message_1"></a>
 
 **Cause Analysis<a name="section10617103715593"></a>**
 
@@ -1917,6 +1938,7 @@ When a service operation is performed, an error message is displayed, as shown i
 **Solution<a name="section15834282575"></a>**
 
 1. Access the BIOS screen. For details, see "Accessing the BIOS" in [TaiShan Server BIOS Parameter Reference (Kunpeng 920 Processor)](https://support.huawei.com/enterprise/en/doc/EDOC1100088647/77ba4819/accessing-the-bios).
+
 2. Choose `Advanced` > `MISC Config` > `Support Smmu`.
 
     ![](figures/zh-cn_image_0000002551552435.png)
@@ -1988,27 +2010,28 @@ The logs show that the current node cannot create objects due to no available hu
     systemctl restart ceph.target
     ```
 
-    >![](public_sys-resources/icon-note.gif) **NOTE**
-    >If an error message is displayed during OSD deployment and the OSDs cannot be started after the cluster is restarted, delete the OSDs and deploy them again.
-    >Run the following commands to remove an abnormal OSD from the Ceph cluster.
-    >`[OSD_ID]` indicates the ID of an OSD to be removed, for example, `osd.0`. `[FSID]` indicates the FSID of the current Ceph cluster.
+    > ![](public_sys-resources/icon-note.gif) **NOTE**
     >
-    >```sh
-    >cephadm shell
-    >ceph osd stop [OSD_ID]
-    >ceph osd out [OSD_ID]
-    >ceph osd crush remove [OSD_ID]
-    >ceph osd rm [OSD_ID]
-    >ceph orch daemon rm [OSD_ID] --force 
-    >ceph auth rm [OSD_ID]
-    >```
+    > If an error message is displayed during OSD deployment and the OSDs cannot be started after the cluster is restarted, delete the OSDs and deploy them again.
+    > Run the following commands to remove an abnormal OSD from the Ceph cluster.
+    > `[OSD_ID]` indicates the ID of an OSD to be removed, for example, `osd.0`. `[FSID]` indicates the FSID of the current Ceph cluster.
     >
-    >Delete the OSD configuration file on the physical machine.
+    > ```sh
+    > cephadm shell
+    > ceph osd stop [OSD_ID]
+    > ceph osd out [OSD_ID]
+    > ceph osd crush remove [OSD_ID]
+    > ceph osd rm [OSD_ID]
+    > ceph orch daemon rm [OSD_ID] --force 
+    > ceph auth rm [OSD_ID]
+    > ```
     >
-    >```sh
-    >exit
-    >rm -rf /var/lib/ceph/[FSID]/[OSD_ID]/ 
-    >```
+    > Delete the OSD configuration file on the physical machine.
+    >
+    > ```sh
+    > exit
+    > rm -rf /var/lib/ceph/[FSID]/[OSD_ID]/ 
+    > ```
 
 ### Updating the NIC Firmware and Driver<a id="updating-the-NIC-firmware-and-driver"></a>
 
@@ -2028,8 +2051,9 @@ The logs show that the current node cannot create objects due to no available hu
 
 4. [Download the NIC driver](https://support.huawei.com/enterprise/en/management-software/computing-component-idriver-pid-259488843/software/262409128?idAbsPath=fixnode01%7C23710424%7C251364417%7C251364851%7C254884035%7C259488843).
 
-    >![](public_sys-resources/icon-note.gif) **NOTE**
-    >The driver for openEuler 20.03 LTS SP4 is not provided. You can use that for openEuler 20.03 LTS SP3.
+    > ![](public_sys-resources/icon-note.gif) **NOTE**
+    >
+    > The driver for openEuler 20.03 LTS SP4 is not provided. You can use that for openEuler 20.03 LTS SP3.
 
 5. Install the driver.
     1. Decompress the downloaded ISO file.
@@ -2068,8 +2092,9 @@ The logs show that the current node cannot create objects due to no available hu
     reboot
     ```
 
->![](public_sys-resources/icon-note.gif) **NOTE**
->The recommended versions are as follows:
+> ![](public_sys-resources/icon-note.gif) **NOTE**
+>
+> The recommended versions are as follows:
 >
 > 1. Firmware version: 16.32.1010 \(HUA0000000024\)
 >
@@ -2093,9 +2118,7 @@ The RDMA driver of SP670 is not correctly installed in the container.
 
 **Solution<a name="section17451976234"></a>**
 
-1. Download the latest firmware and driver installation packages and decompress them. \(Download `NIC-FW-17.12.1.2.tar.gz` and `SDK_LINUX-17.12.1.2-openEuler22.03SP4-aarch64.tar.gz`.)
-
-    [Obtain the firmware and driver](https://support.huawei.com/enterprise/en/huawei-computing-components/in220-pid-253287505/software/266018371?idAbsPath=fixnode01).
+1. [Download the latest firmware and driver installation packages](https://support.huawei.com/enterprise/en/huawei-computing-components/in220-pid-253287505/software/266018371?idAbsPath=fixnode01) and decompress them. \(Download `NIC-FW-17.12.1.2.tar.gz` and `SDK_LINUX-17.12.1.2-openEuler22.03SP4-aarch64.tar.gz`.)
 
 2. Upgrade the firmware.
 
@@ -2120,8 +2143,9 @@ The RDMA driver of SP670 is not correctly installed in the container.
 
 4. Run the `reboot` command to reboot the server.
 
-    >![](public_sys-resources/icon-note.gif) **NOTE**
-    >You can run the `ethtool -i [device-name]` command to check the firmware and driver versions. You need to create a Ceph deployment container again. For details, see [5.2.3](#skip_001). During the creation, install the driver.
+    > ![](public_sys-resources/icon-note.gif) **NOTE**
+    >
+    > You can run the `ethtool -i [device-name]` command to check the firmware and driver versions. You need to create a Ceph deployment container again. For details, see [5.2.3](#skip_001). During the creation, install the driver.
 
 ### How Can I Rectify an Error Reported When UCX Uses SP670?<a name="EN-US_TOPIC_0000002551552425"></a>
 
@@ -2137,7 +2161,7 @@ The default Rx queue depth of UCX is 4096, but the maximum depth supported by SP
 
 **Solution<a name="section5188164015718"></a>**
 
-1. To solve this issue, you need to modify a line of code by referring to section [5.1](#compiling-and-installing-UCX) based on the following code:
+1. To solve this issue, you need to modify a line of code by referring to [section 5.1](#compiling-and-installing-UCX) based on the following code:
 
     ```sh
     cd /root/rpmbuild/SOURCES/
@@ -2197,8 +2221,9 @@ The default Rx queue depth of UCX is 4096, but the maximum depth supported by SP
     podman push [IP]:5000/ceph/ceph_release:v17.2.7 [IP]:5000/ceph/ceph_release:v17.2.7
     ```
 
-    >![](public_sys-resources/icon-note.gif) **NOTE**
-    >`[IMAGE ID]` indicates the image ID generated by the commit command, and `[IP]` indicates the local IP address. Replace them with the actual ones.
+    > ![](public_sys-resources/icon-note.gif) **NOTE**
+    >
+    > `[IMAGE ID]` indicates the image ID generated by the commit command, and `[IP]` indicates the local IP address. Replace them with the actual ones.
 
 ## Security Management<a name="EN-US_TOPIC_0000002520032426"></a>
 
@@ -2233,3 +2258,9 @@ To ensure the production environment security and reduce attack risks, periodica
 |TCP|Transmission Control Protocol|
 |**U - Z**|
 |UCX|Unified Communication X|
+
+## Change History
+
+| Date  | Description |
+|-------|----------|
+| 2025-03-30 | This is the first official release. |

@@ -1,6 +1,6 @@
-# README<a name="EN-US_TOPIC_0000002552469311"></a>
+# README
 
-## Project Introduction<a name="EN-US_TOPIC_0000002521315532"></a>
+## Project Introduction
 
 With the rapid development of 5G, AI, and cloud computing services, data volumes are growing explosively. Diversified services pose stricter performance requirements on distributed storage systems. Maintaining high IOPS in erasure coding (EC) mode, reducing cross-node communication latency, and improving storage space utilization have become the core challenges faced by modern large-scale clusters.
 
@@ -9,7 +9,8 @@ This repository enhances the open-source Ceph framework and focuses on four key 
 ## Directory Structure
 
 ```txt
-├── docs                                                    # Project document directory
+├── docs                                                    # Project documentation
+│   ├── LICENSE                                             # Software license
 │   └── en                                                  # English document directory
 │       ├── figures                                         # Directory of figures in documents
 │       ├── public_sys-resources                            # Public resources directory
@@ -17,15 +18,14 @@ This repository enhances the open-source Ceph framework and focuses on four key 
 │       ├── ec_turbo_feature_guide.md                       # EC Turbo Feature Guide
 │       ├── ec_turbo_tuning_guide.md                        # EC Turbo Tuning Guide
 │       ├── rdma_network_acceleration_feature_guide.md      # RDMA Network Acceleration Feature Guide
-│       ├── spdk_io_acceleration_feature_guide.md           # SPDK I/O Acceleration Feature Guide
-│       ├── LICENSE                                         # Software license
-│       └── README.md                                       # Introduction document
+│       └── spdk_io_acceleration_feature_guide.md           # SPDK I/O Acceleration Feature Guide
 ├── ceph-14.2.8-compaction.patch                            # Data compaction patch for Ceph adaptation
 ├── ceph-14.2.8-ucx.patch                                   # RDMA network acceleration patch for Ceph to adapt to UCX
 ├── ceph-17.2.x-spdk.patch                                  # SPDK I/O acceleration patch for Ceph to adapt to SPDK
 ├── ceph-17.2.x-ucx.patch                                   # SPDK I/O acceleration patch for Ceph to adapt to UCX
 ├── ceph-14.2.8-ec_turbo-release.patch                      # EC Turbo patch for Ceph adaptation
-└── ceph-ecturbo-optimization.patch                         # EC Turbo patch for Ceph optimization
+├── ceph-ecturbo-optimization.patch                         # EC Turbo patch for Ceph optimization
+└── README.md                                               # Project introduction
 ```
 
 ## Introduction<a name="EN-US_TOPIC_0000002521064452"></a>
@@ -35,7 +35,7 @@ This repository enhances the open-source Ceph framework and focuses on four key 
 |EC Turbo|[EC Turbo Feature Guide](docs/en/ec_turbo_feature_guide.md)|EC Turbo is a Huawei-developed feature library for optimizing the performance of Ceph erasure-coded storage pools. EC Turbo improves the I/O read and write performance of data whose length is within a stripe.|
 |EC Turbo tuning|[EC Turbo Tuning Guide](docs/en/ec_turbo_tuning_guide.md)|After the EC Turbo feature is added to Ceph, the read and write performance of a 4 KB block cluster in EC mode can be optimized through EC Turbo tuning.|
 |SPDK I/O acceleration|[SPDK I/O Acceleration Feature Guide](docs/en/spdk_io_acceleration_feature_guide.md)|Ceph is deployed in containers. The integration of the SPDK, UCX, and KSAL maximizes storage and network performance, answering the need for high throughput and low latency in modern distributed storage.|
-|Data compaction|[Data Compaction Feature Guide](docs/en/data_compaction_feature_guide.md)|The data compaction algorithm eliminates waste caused by zero padding and combines with functions including data encapsulation, space allocation based on block counting, granularity-based traffic division, batch submission, and batch callback to improve the data reduction ratio and overall system IOPS. This reduces costs and improves performance.|
+|Data compaction|[Data Compaction Feature Guide](docs/en/data_compaction_feature_guide.md)|The data compaction algorithm eliminates waste caused by zero padding and combines with techniques including data encapsulation, space allocation based on block counting, granularity-based traffic steering, batch submission, and batch callback to improve the data reduction ratio and overall system IOPS. This reduces costs and improves performance.|
 |RDMA network acceleration|[RDMA Network Acceleration Feature Guide](docs/en/rdma_network_acceleration_feature_guide.md)|The RDMA network acceleration feature applies the UCX framework to enable RDMA in front- and back-end networks of a Ceph cluster.|
 
 ## Disclaimer<a name="EN-US_TOPIC_0000002551989693"></a>
