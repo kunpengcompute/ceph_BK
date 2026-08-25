@@ -114,9 +114,9 @@ Ceph集群部署各客户端IP地址举例如[**表 4** 客户端部署示例](#
         patch -p1 < ceph-ecturbo-optimization.patch
         ```
 
-4. 请参见《EC Turbo特性指南》中的[制作liboath-devel包](https://www.hikunpeng.com/document/detail/zh/kunpengsdss/appAccelFeatures/ecturbo/kunpengecturbo_20_0017.html)章节制作liboath-devel包。
+4. 请参见[《EC Turbo特性指南》](https://www.hikunpeng.com/document/detail/zh/boostsds/ecturbo/docs/zh/ec_turbo_feature_guide.md)中的制作liboath-devel包章节制作liboath-devel包。
 
-5. 请参见《EC Turbo特性指南》中的[编译环境准备](https://www.hikunpeng.com/document/detail/zh/kunpengsdss/appAccelFeatures/ecturbo/kunpengecturbo_20_0018.html)章节完成Ceph的编译环境准备。
+5. 请参见《EC Turbo特性指南》中的[编译环境准备](https://www.hikunpeng.com/document/detail/zh/boostsds/ecturbo/docs/zh/ec_turbo_feature_guide.md#环境准备 )章节完成Ceph的编译环境准备。
 
     >![](public_sys-resources/icon-note.gif) **说明：** 
     >
@@ -126,11 +126,11 @@ Ceph集群部署各客户端IP地址举例如[**表 4** 客户端部署示例](#
     >yum install libhugetlbfs
     >```
 
-6. 请参见[编译Ceph并验证](https://www.hikunpeng.com/document/detail/zh/kunpengsdss/appAccelFeatures/ecturbo/kunpengecturbo_20_0009.html)完成Ceph的编译与验证。
+6. 请参见[编译Ceph并验证](https://www.hikunpeng.com/document/detail/zh/boostsds/datacomp/docs/zh/data_compaction_feature_guide.md)完成Ceph的编译与验证。
 
-7. 请参见[生成Ceph RPM包](https://www.hikunpeng.com/document/detail/zh/kunpengsdss/appAccelFeatures/ecturbo/kunpengecturbo_20_0010.html)完成Ceph RPM包的制作。
+7. 请参见[生成Ceph RPM包](https://www.hikunpeng.com/document/detail/zh/boostsds/datacomp/docs/zh/data_compaction_feature_guide.md)完成Ceph RPM包的制作。
 
-8. 请参见[部署Ceph集群](https://www.hikunpeng.com/document/detail/zh/kunpengsdss/appAccelFeatures/ecturbo/kunpengecturbo_20_0011.html)完成Ceph集群的部署。
+8. 请参见[部署Ceph集群](https://www.hikunpeng.com/document/detail/zh/boostsds/datacomp/docs/zh/data_compaction_feature_guide.md)完成Ceph集群的部署。
 
     >![](public_sys-resources/icon-note.gif) **说明：** 
     >本次环境采用的数据盘全部为NVMe，因此在部署OSD节点时不需要对OSD进行分区划分，直接使用NVME盘做OSD的数据盘即可。为充分发挥硬件性能，每台服务器上最佳部署的OSD节点数量为24个，建议对每块NVMe盘划分为三个分区，然后进行OSD的部署。
@@ -411,7 +411,7 @@ Ceph集群部署各客户端IP地址举例如[**表 4** 客户端部署示例](#
     >
     >    ![](figures/zh-cn_image_0000002520913158.png)
     > 
-    >    返回信息显示4096表示当前内核页大小为4k，若返回信息不为4096，请参见《Bcache用户指南》中的[编译内核](https://www.hikunpeng.com/document/detail/zh/kunpengsdss/basicAccelFeatures/cacheAccel/kunpengbcache_06_0003.html)进行编译安装。
+    >    返回信息显示4096表示当前内核页大小为4k，若返回信息不为4096，请参见《Bcache用户指南》中的[编译内核](https://www.hikunpeng.com/document/detail/zh/kunpengaccel/storage/cacheAccel/kunpengbcache_06_0003.html)进行编译安装。
     > - 系统大页的数量所占的内存量要不少于本节点OSD所需要的内存量（osd\_memory\_target \* osd数量）。例如：每个节点配置了24个OSD，osd\_memory\_target配置为10GB，则大页内存至少要配置240GB，在4k内核页的环境下，一个大页的大小为2M，因此至少配成120000。
     > - 若系统已经运行较长时间，内存可能已经碎片化无法分配出一定数量的大页，可以通过如下步骤将大页分配的命令添加至对应内核（可通过`uname -r`查看）的配置中并重启服务器使其生效。
     >   1. 编辑`grub.cfg`文件，并添加`hugepagesz=2M`和`hugepages=163840`的配置内容。
@@ -1197,6 +1197,6 @@ Ceph集群部署各客户端IP地址举例如[**表 4** 客户端部署示例](#
 
 ## 修订记录
 
-| 发布日期  | 修改说明       |
-|-------|----------|
-| 2024-12-30 | 第一次正式发布。|
+| 文档版本 | 发布日期  | 修改说明 |
+|------- | ------- |----------|
+| 01 | 2024-12-30 | 第一次正式发布。|

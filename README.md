@@ -1,5 +1,5 @@
 # README
-
+简体中文 | [English](./README_EN.md)
 ## 项目介绍
 
 随着5G、AI与云计算业务的飞速发展，数据量呈现爆发式增长。多样化的业务对分布式存储系统提出了更严苛的性能诉求，如何在纠删码（EC）模式下保持高IOPS、如何降低跨节点通信时延、以及如何提升存储空间利用率，成为现代大规模集群面临的核心挑战。
@@ -61,3 +61,9 @@
 ## 贡献声明<a name="ZH-CN_TOPIC_0000002551909683"></a>
 
 欢迎大家为社区做贡献，如果使用过程中有任何问题/建议，或者需要反馈特性需求和bug报告，可以提交[Issues](https://gitcode.com/boostkit/community/blob/master/docs/contributor/issue-submit.md)联系我们，具体贡献方法可参考[这里](https://gitcode.com/boostkit/community/blob/master/docs/contributor/contributing.md)。同时也欢迎大家在[讨论专区](https://gitcode.com/boostkit/community/discussions)展开讨论交流。感谢您的支持。
+
+## 修订记录
+
+| 文档版本 | 发布日期  | 修改说明 |
+| ------- | -------|----------|
+| 01 | 2026-04-30 | 第一次正式发布。|
