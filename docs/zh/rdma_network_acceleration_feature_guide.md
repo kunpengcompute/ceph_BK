@@ -60,7 +60,7 @@ RDMA网络加速特性主要使用UCX适配Ceph分布式存储开源版本主流
 
 | 项目      | 版本                      | 获取地址                                                                                                                           |
 |---------|-------------------------|--------------------------------------------------------------------------------------------------------------------------------|
-| 物理机操作系统 | openEuler 20.03 LTS SP4 | [openEuler 20.03 LTS SP4操作系统ISO下载页面](https://mirrors.tools.huawei.com/openeuler/openEuler-20.03-LTS-SP4/ISO/aarch64/openEuler-20.03-LTS-SP4-aarch64-dvd.iso) |
+| 物理机操作系统 | openEuler 20.03 LTS SP4 | [openEuler 20.03 LTS SP4操作系统ISO下载页面](https://repo.huaweicloud.com/openeuler/openEuler-20.03-LTS-SP4/ISO/aarch64/openEuler-20.03-LTS-SP4-aarch64-dvd.iso) |
 | Ceph    | 14.2.8                  | [ceph-14.2.8源码包下载页面](https://download.ceph.com/tarballs/ceph-14.2.8.tar.gz)                                                                  |
 | UCX     | 1.14.1                  | [UCX 1.14.1源码RPM包下载页面](https://github.com/openucx/ucx/releases/download/v1.14.1/ucx-1.14.1-1.el7.src.rpm)                                      |
 
