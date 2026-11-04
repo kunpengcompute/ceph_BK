@@ -1,5 +1,7 @@
 # EC Turbo调优指南
 
+本文档介绍EC Turbo与Ceph通用基础优化叠加后对EC模式4k块集群读写性能的调优方法，涵盖系统调优、Ceph代码优化、Ceph配置调优、大页配置调优、编译反馈调优与网卡绑核调优，适用于需要提升EC存储池读写性能的用户。
+
 ## 调优概述<a name="ZH-CN_TOPIC_0000002551873135"></a>
 
 ### EC介绍<a name="ZH-CN_TOPIC_0000002520913146"></a>
@@ -34,7 +36,7 @@ EC也称纠删码，是一种纠正数据丢失的校验码。例如EC4+2模式�
 
 集群由Ceph客户端和Ceph服务端组成，其组网方式如下图所示。
 
-![](figures/物理组网图.png "物理组网图-22")
+![Ceph客户端与3个Ceph服务端节点经Public Network与Cluster Network互联的物理组网示意图](figures/物理组网图.png "物理组网图-22")
 
 Ceph集群部署时各服务端IP地址举例如[**表 3** 服务端组网示例](#服务端组网示例)所示。
 
@@ -150,7 +152,7 @@ Ceph集群部署各客户端IP地址举例如[**表 4** 客户端部署示例](#
     vi ceph.conf 
     ```
 
-2. 在ceph.conf文件添加如下配置。配置文件中的参数解释请参见[硬件要求](#硬件要求)。
+2. 在ceph.conf文件添加如下配置。配置文件中的参数解释请参见[参数释义](#参数释义)。
 
     ```ini
     [global]
@@ -347,7 +349,7 @@ Ceph集群部署各客户端IP地址举例如[**表 4** 客户端部署示例](#
     >
     >配置文件中的`osd_numa_node=0`表示osd0进程绑在NUMA0上，本文档依据鲲鹏920 7260处理器进行调优，该CPU型号有4个NUMA，每台节点部署24个OSD，为了将osd进程均匀绑定在CPU核心上，充分发挥硬件性能，每连续的6个OSD绑在同一个NUMA上，若使用的CPU只有2个NUMA，则每连续的12个OSD绑在同一个NUMA上，其它情况以此类推。具体查看CPU NUMA数量的命令为：`lscpu`。
     >
-    >![](figures/zh-cn_image_0000002520753166.png)
+    >![执行lscpu命令查看CPU NUMA数量的回显，用于确定osd进程与NUMA节点的绑定范围](figures/zh-cn_image_0000002520753166.png)
 
 3. 执行以下命令将配置同步到其他节点。
 
@@ -409,7 +411,7 @@ Ceph集群部署各客户端IP地址举例如[**表 4** 客户端部署示例](#
     >    getconf PAGESIZE
     >    ```
     >
-    >    ![](figures/zh-cn_image_0000002520913158.png)
+    >    ![执行getconf PAGESIZE命令查看内核页大小的回显，返回4096表示当前内核页为4k](figures/zh-cn_image_0000002520913158.png)
     > 
     >    返回信息显示4096表示当前内核页大小为4k，若返回信息不为4096，请参见《Bcache用户指南》中的[编译内核](https://www.hikunpeng.com/document/detail/zh/kunpengaccel/storage/cacheAccel/kunpengbcache_06_0003.html)进行编译安装。
     > - 系统大页的数量所占的内存量要不少于本节点OSD所需要的内存量（osd\_memory\_target \* osd数量）。例如：每个节点配置了24个OSD，osd\_memory\_target配置为10GB，则大页内存至少要配置240GB，在4k内核页的环境下，一个大页的大小为2M，因此至少配成120000。
@@ -420,7 +422,7 @@ Ceph集群部署各客户端IP地址举例如[**表 4** 客户端部署示例](#
     >        vim /boot/efi/EFI/openEuler/grub.cfg
     >        ```
     >
-    >        ![](figures/zh-cn_image_0000002520753172.png)
+    >        ![编辑grub.cfg文件并添加hugepagesz=2M与hugepages=163840大页配置的内容](figures/zh-cn_image_0000002520753172.png)
     >   2. 配置完成后重启节点并可以通过执行以下命令检查大页使用情况查看是否生效。
     >
     >        ```sh
@@ -428,7 +430,7 @@ Ceph集群部署各客户端IP地址举例如[**表 4** 客户端部署示例](#
     >        cat /proc/meminfo | grep Huge
     >        ```
     > 
-    >        ![](figures/zh-cn_image_0000002551793159.png)
+    >        ![重启后执行cat /proc/meminfo | grep Huge检查大页数量是否生效的回显](figures/zh-cn_image_0000002551793159.png)
 
 2. 配置启动大页自动挂载。
     1. 创建挂载大页目录。
@@ -449,7 +451,7 @@ Ceph集群部署各客户端IP地址举例如[**表 4** 客户端部署示例](#
         nodev           /mnt/huge       hugetlbfs       defaults,pagesize=2M   0 0
         ```
 
-        ![](figures/zh-cn_image_0000002551873147.png)
+        ![在/etc/fstab中添加hugetlbfs挂载行的配置内容，pagesize为2M](figures/zh-cn_image_0000002551873147.png)
 
 3. 修改Ceph服务，使能tcmalloc大页配置。
 
@@ -463,7 +465,7 @@ Ceph集群部署各客户端IP地址举例如[**表 4** 客户端部署示例](#
     TCMALLOC_MEMFS_MALLOC_PATH=/mnt/huge/osd%i
     ```
 
-    ![](figures/zh-cn_image_0000002551793163.png)
+    ![ceph-osd@.service中添加TCMALLOC_MEMFS_MALLOC_PATH环境变量的配置内容](figures/zh-cn_image_0000002551793163.png)
 
 4. 重新加载配置。
 
@@ -627,7 +629,7 @@ Ceph集群部署各客户端IP地址举例如[**表 4** 客户端部署示例](#
 
     2. 执行以上命令后，会在`/media/bisheng-pgo/`下生成`default_*_profraw`文件。
 
-        ![](figures/zh-cn_image_0000002520913154.png)
+        ![执行上述gdb命令后/media/bisheng-pgo目录下生成default_*_profraw采样文件的回显](figures/zh-cn_image_0000002520913154.png)
 
     3. 对`default_*_profraw`文件进行预处理，生成profraw文件。
 
@@ -636,7 +638,7 @@ Ceph集群部署各客户端IP地址举例如[**表 4** 客户端部署示例](#
         /home/BiShengCompiler-4.1.0-aarch64-linux/bin/llvm-profdata merge -output=bisheng.profdata ./*
         ```
 
-        ![](figures/zh-cn_image_0000002520753168.png)
+        ![执行llvm-profdata merge将profraw采样文件合并为bisheng.profdata的命令回显](figures/zh-cn_image_0000002520753168.png)
 
 7. <a id="li048145653616"></a>利用反馈信息重新编译获取ceph-osd。
     1. 进入`ceph-14.2.10`源码目录，并新建`do_cmake_release_pgo_use.sh`。
@@ -773,7 +775,7 @@ Ceph集群部署各客户端IP地址举例如[**表 4** 客户端部署示例](#
 
     2. 执行以上命令后，会在`/media/pgo/`下生成CMakeFiles文件。
 
-        ![](figures/zh-cn_image_0000002551873143.png)
+        ![执行gdb __gcov_exit命令后/media/pgo目录下生成CMakeFiles覆盖率采集文件的回显](figures/zh-cn_image_0000002551873143.png)
 
 6. <a id="li6498182219375"></a>利用反馈信息重新编译获取ceph-osd。
     1. 进入`ceph-14.2.10`源码目录，并新建`do_cmake_release_pgo_use.sh`。
@@ -857,7 +859,7 @@ Ceph集群部署各客户端IP地址举例如[**表 4** 客户端部署示例](#
     >
     >在终端输入命令后，Public Network（192.168.3.166）对应的网卡名称为enp1330f1，Cluster Network（192.168.4.166）对应的网卡名称为enp1330f2。
     >
-    > ![](figures/zh-cn_image_0000002551793157.png)
+    > ![查看Public Network与Cluster Net的操作界面截图](figures/zh-cn_image_0000002551793157.png)
 
 4. <a id="li26801437175213"></a>搜索Public Network与Cluster Network对应网卡的中断号信息。
 
@@ -871,7 +873,7 @@ Ceph集群部署各客户端IP地址举例如[**表 4** 客户端部署示例](#
     > - 上述命令中的enp133s0f1与enp133s0f2分别对应的是Public Network与Cluster Network对应的网卡名称，若输入命令后没有信息打印，则该网卡不支持直接通过网卡名称获取中断号，需要通过网卡bus信息获取对应的中断号。
     > - 终端输入命令ethtool -i ”网卡名称”获取对应的网卡bus信息。
     >
-    > ![](figures/zh-cn_image_0000002520913150.png)
+    > ![查看Public Network与Cluster Net的操作界面截图](figures/zh-cn_image_0000002520913150.png)
     >
     > 如上图所示enp133s0f0np0网卡的bus信息是0000:85:00.0，将网卡名称替换为bus信息来获取对应的中断号。
     >
@@ -907,9 +909,9 @@ Ceph集群部署各客户端IP地址举例如[**表 4** 客户端部署示例](#
     sh bind_net_intterrupt.sh
     ```
 
-7. 执行4k块写测试用例，详细步骤请参考[测试指导](#测试指导)。
+7. 执行4k块写测试用例，详细步骤请参见[测试指导](#测试指导)。
 
-    ![](figures/zh-cn_image_0000002551873141.png)
+    ![执行4k块写测试用例的操作界面截图](figures/zh-cn_image_0000002551873141.png)
 
     > ![](public_sys-resources/icon-note.gif) **说明：** 
     > 
@@ -945,7 +947,7 @@ Ceph集群部署各客户端IP地址举例如[**表 4** 客户端部署示例](#
         ec_metadata_pool=ec_metadata
         image_pre=image
         size=20G
-        ceph osd pool rm $ec_metadata_pool $ec_metadata_pool true
+        ceph osd pool rm $ec_metadata_pool $ec_metadata_pool true //删除已存在的存储池与EC4_2纠删码profile，便于脚本重复执行，执行前请确认池中无业数据
         ceph osd pool rm $ec_data_pool $ec_data_pool true
         ceph osd erasure-code-profile rm EC4_2
         ceph osd erasure-code-profile set EC4_2 k=4 m=2 crush-failure-domain=osd plugin=isa stripe_unit=4096

@@ -1,5 +1,7 @@
 # SPDK IO加速特性指南
 
+本文档介绍SPDK IO加速特性，通过在鲲鹏服务器上容器化部署Ceph 17.2.7集群并配置SPDK、UCX、KSAL集成，降低存储I/O时延、提升集群读写性能，适用于Ceph分布式存储的部署与调优人员。
+
 ## 特性描述<a name="ZH-CN_TOPIC_0000002551432413"></a>
 
 ### 简介<a name="ZH-CN_TOPIC_0000002551432415"></a>
@@ -16,7 +18,7 @@
 
 **可获得性<a name="section9679018303"></a>**
 
-- 版本：支持Ceph 17.2.7，SPDK 21.01，UCX 1.14.1。
+- 版本：支持Ceph 17.2.7，SPDK 21.01.1，UCX 1.14.1。
 
 **约束与限制<a name="section6558111125513"></a>**
 
@@ -26,7 +28,7 @@
 
 - Ceph 17使用cephadm部署集群时，MON、OSD等Ceph服务容器官方默认以`--privileged`模式启动。
 
-    ![](figures/zh-cn_image_0000002551432437.png)
+    ![Ceph 17使用cephadm部署集群时MON、OSD等服务容器默认以privileged模式启动的说明截图](figures/zh-cn_image_0000002551432437.png)
 
 **原理描述<a name="section123713125487"></a>**
 
@@ -35,7 +37,7 @@ Ceph分布式存储开源版本中支持以下两种NVMe协议的SSD驱动：
 - NVMe：内核态驱动。
 - SPDK：用户态驱动。
 
-SPDK IO加速特性通过切换使用用户态驱动，降低I/O时延，提升Ceph读写性能，具体操作可参见[前提条件](#li11112652145119)。
+SPDK IO加速特性通过切换使用用户态驱动，降低I/O时延，提升Ceph读写性能，具体操作可参见[步骤3 NVMe SSD切换到用户态驱动](#li11112652145119)。
 
 在配置特性前，请先了解License支持信息、使用约束与限制和原理。
 
@@ -47,7 +49,7 @@ SPDK IO加速特性通过切换使用用户态驱动，降低I/O时延，提升C
 
 环境组网使用分布式存储Ceph系统，包含3个客户端节点client1\~client3和3个服务端节点ceph1\~ceph3。
 
-![](figures/220610144846660.png)
+![Ceph分布式存储环境组网图，3个客户端节点与3个服务端节点的网络连接关系](figures/220610144846660.png)
 
 Ceph集群部署时各服务端IP地址举例如[**表 1** 服务端部署IP地址](#服务端部署IP地址)所示。
 
@@ -96,9 +98,9 @@ Ceph集群部署各客户端IP地址举例如[**表 2** 客户端部署IP地址]
 
 | 项目      | 版本                                | 获取地址                                                                                                                                                                              |
 |---------|-----------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| 物理机操作系统 | openEuler 20.03 LTS SP4           | [获取链接](https://repo.huaweicloud.com/openeuler/openEuler-20.03-LTS-SP4/ISO/aarch64/openEuler-20.03-LTS-SP4-everything-aarch64-dvd.iso)                                         |
-| 欧拉镜像    | openEuler 22.03 LTS SP4           | [获取链接](https://repo.huaweicloud.com/openeuler/openEuler-22.03-LTS-SP4/docker_img/aarch64/openEuler-docker.aarch64.tar.xz)                                                         |
-| Ceph    | 17.2.7                            | [获取链接](https://download.ceph.com/tarballs/ceph-17.2.7.tar.gz)                                                                                                                     |
+| 物理机操作系统 | openEuler 20.03 LTS SP4           | [openEuler 20.03 LTS SP4 aarch64 ISO镜像](https://repo.huaweicloud.com/openeuler/openEuler-20.03-LTS-SP4/ISO/aarch64/openEuler-20.03-LTS-SP4-everything-aarch64-dvd.iso)                                         |
+| 欧拉镜像    | openEuler 22.03 LTS SP4           | [openEuler 22.03 LTS SP4 aarch64容器基础镜像](https://repo.huaweicloud.com/openeuler/openEuler-22.03-LTS-SP4/docker_img/aarch64/openEuler-docker.aarch64.tar.xz)                                                         |
+| Ceph    | 17.2.7                            | [ceph-17.2.7源码包下载](https://download.ceph.com/tarballs/ceph-17.2.7.tar.gz)                                                                                                                     |
 | UCX     | 1.14.1                            | [获取链接1](https://github.com/openucx/ucx/releases/download/v1.14.1/ucx-1.14.1-1.el7.src.rpm)<br>[获取链接2](https://github.com/openucx/ucx/releases/download/v1.14.1/ucx-1.14.1.tar.gz) |
 | SPDK    | 21.01.1 (openEuler 22.03 LTS SP4) | `git clone -b openEuler-22.03-LTS-SP4 https://gitee.com/src-openeuler/spdk.git`                                                                                                   |
 | DPDK    | 21.11 (openEuler 22.03 LTS SP4)   | `git clone -b openEuler-22.03-LTS-SP4 https://gitee.com/src-openeuler/dpdk.git`                                                                                                   |
@@ -118,9 +120,9 @@ Ceph集群部署各客户端IP地址举例如[**表 2** 客户端部署IP地址]
 
 | 软件包                      | 说明                                     | 获取路径                                                                                                                                  |
 |--------------------------|----------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------|
-| ceph-17.2.x-spdk.patch   | Ceph适配SPDK的补丁文件                        | [获取链接](https://gitcode.com/boostkit/ceph_BK/blob/master/ceph-17.2.x-spdk.patch)                                             |
-| ceph-17.2.x-ucx.patch    | Ceph适配UCX的补丁文件                         | [获取链接](https://gitcode.com/boostkit/ceph_BK/blob/master/ceph-17.2.x-ucx.patch)                                              |
-| BoostKit-KSAL_1.10.0.zip | 存储算法加速库（KSAL闭源算法包），可提高Ceph内部相关算法的运算效率。 | [获取链接](https://kunpeng-repo.obs.cn-north-4.myhuaweicloud.com/Kunpeng%20BoostKit/Kunpeng%20BoostKit%2024.0.0/BoostKit-KSAL_1.10.0.zip) |
+| ceph-17.2.x-spdk.patch   | Ceph适配SPDK的补丁文件                        | [ceph-17.2.x-spdk.patch补丁文件](https://gitcode.com/boostkit/ceph_BK/blob/master/ceph-17.2.x-spdk.patch)                                             |
+| ceph-17.2.x-ucx.patch    | Ceph适配UCX的补丁文件                         | [ceph-17.2.x-ucx.patch补丁文件](https://gitcode.com/boostkit/ceph_BK/blob/master/ceph-17.2.x-ucx.patch)                                              |
+| BoostKit-KSAL_1.10.0.zip | 存储算法加速库（KSAL闭源算法包），可提高Ceph内部相关算法的运算效率。 | [BoostKit-KSAL_1.10.0存储算法加速库](https://kunpeng-repo.obs.cn-north-4.myhuaweicloud.com/Kunpeng%20BoostKit/Kunpeng%20BoostKit%2024.0.0/BoostKit-KSAL_1.10.0.zip) |
 
 在编译和部署UCX之前，需要准备以下软件包和文件。
 
@@ -287,7 +289,7 @@ Ceph集群部署各客户端IP地址举例如[**表 2** 客户端部署IP地址]
     podman inspect openeuler2203sp4_release | grep Env -A 10
     ```
 
-    ![](figures/zh-cn_image_0000002551432433.png)
+    ![部署容器openeuler2203sp4_release的环境变量查询结果，确认无代理配置](figures/zh-cn_image_0000002551432433.png)
 
     > ![](public_sys-resources/icon-note.gif) **说明：** 
     > 
@@ -389,7 +391,7 @@ Ceph集群部署各客户端IP地址举例如[**表 2** 客户端部署IP地址]
         pid = getpid();
         ```
 
-        ![](figures/zh-cn_image_0000002520032450.png)
+        ![ucx-1.14.1的sys.c文件第1560行新增pid = getpid()代码后的编辑界面](figures/zh-cn_image_0000002520032450.png)
 
     5. 按`Esc`键退出编辑模式，输入`:wq!`，按`Enter`键保存并退出文件。
 
@@ -401,7 +403,7 @@ Ceph集群部署各客户端IP地址举例如[**表 2** 客户端部署IP地址]
 
     7. 按`i`进入编辑模式，在2156行新增`#if 0`，在函数最后新增`#endif`。
 
-        ![](figures/zh-cn_image_0000002520352462.png)
+        ![ucp_context.c文件第2156行新增#if 0并在函数末尾补充#endif的编辑结果](figures/zh-cn_image_0000002520352462.png)
 
     8. 按`Esc`键退出编辑模式，输入`:wq!`，按`Enter`键保存并退出文件。
 
@@ -413,7 +415,7 @@ Ceph集群部署各客户端IP地址举例如[**表 2** 客户端部署IP地址]
 
     10. 按“i“进入编辑模式，在1989行新增`#if 0`，在打印后面新增`#endif` 。
 
-        ![](figures/zh-cn_image_0000002551552441.png)
+        ![parser.c文件第1989行新增#if 0并在打印语句后补充#endif的编辑结果](figures/zh-cn_image_0000002551552441.png)
 
     11. 按`Esc`键退出编辑模式，输入`:wq!`，按`Enter`键保存并退出文件。
       
@@ -429,7 +431,7 @@ Ceph集群部署各客户端IP地址举例如[**表 2** 客户端部署IP地址]
         ah_attr->grh.flow_label = 0;
         ```
 
-        ![](figures/zh-cn_image_0000002520032452.png)
+        ![ib_iface.c文件第735行注释原语句并新增flow_label赋值语句的编辑结果](figures/zh-cn_image_0000002520032452.png)
 
     14. 按`Esc`键退出编辑模式，输入`:wq!`，按`Enter`键保存并退出文件。
 
@@ -449,7 +451,7 @@ Ceph集群部署各客户端IP地址举例如[**表 2** 客户端部署IP地址]
 
     编译完成后在`/root/rpmbuild/RPMS/aarch64`目录会生成如下图所示的8个RPM包。
 
-    ![](figures/zh-cn_image_0000002551432449.png)
+    ![编译后在/root/rpmbuild/RPMS/aarch64目录生成的8个UCX RPM包列表](figures/zh-cn_image_0000002551432449.png)
 
 9. 把编译生成后的RPM包拷贝到`/home/local_rpm/`目录下，然后进行安装。
 
@@ -693,7 +695,7 @@ Ceph集群部署各客户端IP地址举例如[**表 2** 客户端部署IP地址]
         is_polling = cct->_conf->ms_async_op_threads_polling | cct->_conf->ms_async_ucx_event_polling;
         ```
 
-        ![](figures/zh-cn_image_0000002520032454.png)
+        ![EventEpoll.h第34行代码替换为UCX事件轮询判断语句后的编辑结果](figures/zh-cn_image_0000002520032454.png)
 
     3. 按`Esc`键退出编辑模式，输入`:wq!`，按`Enter`键保存并退出文件。
 
@@ -780,7 +782,7 @@ Ceph集群部署各客户端IP地址举例如[**表 2** 客户端部署IP地址]
     >        331 }
     >    ```
     >
-    >    ![](figures/编译报错.png "编译报错-44")
+    >    ![Ceph编译时SnapMapper.cc与fmt包版本不匹配导致的编译报错信息](figures/编译报错.png "编译报错-44")
     
 2. 编译Ceph。
 
@@ -904,7 +906,7 @@ Ceph集群部署各客户端IP地址举例如[**表 2** 客户端部署IP地址]
 
     2. 按`i`进入编辑模式，将Ceph的登录shell修改为`/bin/bash`。
 
-        ![](figures/zh-cn_image_0000002520032456.png)
+        ![在/etc/passwd中将Ceph用户登录shell修改为/bin/bash的编辑结果](figures/zh-cn_image_0000002520032456.png)
 
     3. 按`Esc`退出编辑模式，输入`:wq!`，按`Enter`键保存并退出文件。
 
@@ -1057,7 +1059,7 @@ Ceph集群启动时，需要动态地从远程仓库拉取镜像。为了方便�
     if self.privileged 修改为 if self.privileged or not self.privileged
     ```
 
-    ![](figures/zh-cn_image_0000002551432451.png)
+    ![cephadm中run_cmd函数内容器权限判断语句修改为总是以privileged模式创建的编辑结果](figures/zh-cn_image_0000002551432451.png)
 
     > ![](public_sys-resources/icon-note.gif) **说明：** 
     > 
@@ -1247,7 +1249,7 @@ Ceph集群启动时，需要动态地从远程仓库拉取镜像。为了方便�
     > - --cluster-network：对应后端集群网络的IP地址。
     > - -c ceph.conf：可选，需要修改Ceph默认配置可以使用。
 
-    ![](figures/zh-cn_image_0000002520352452.png)
+    ![cephadm bootstrap引导Ceph集群命令执行成功的回显信息](figures/zh-cn_image_0000002520352452.png)
 
 3. 拷贝公钥到其他节点进行使用。
 
@@ -1286,7 +1288,7 @@ Ceph集群启动时，需要动态地从远程仓库拉取镜像。为了方便�
     ceph orch host ls
     ```
 
-    ![](figures/zh-cn_image_0000002551552431.png)
+    ![ceph orch host ls命令返回的主机列表，显示ceph2、ceph3已加入集群](figures/zh-cn_image_0000002551552431.png)
 
 8. 查看集群状态，确认其他两个节点加入集群。
 
@@ -1294,7 +1296,7 @@ Ceph集群启动时，需要动态地从远程仓库拉取镜像。为了方便�
     ceph -s
     ```
 
-    ![](figures/1_zh-cn_image_0000002168583314.png)
+    ![ceph -s命令返回的集群状态，显示ceph1至ceph3主机与MON、MGR服务](figures/1_zh-cn_image_0000002168583314.png)
 
 请在ceph1上创建集群配置，引导生成Ceph容器集群，该集群将管理所有节点。
 
@@ -1334,7 +1336,7 @@ Ceph集群启动时，需要动态地从远程仓库拉取镜像。为了方便�
     ms_async_ucx_event_polling = true
     ```
 
-    ![](figures/zh-cn_image_0000002520032446.png)
+    ![MON配置文件中新增ms_type、ms_async_ucx_device等UCX参数后的编辑结果](figures/zh-cn_image_0000002520032446.png)
 
     > ![](public_sys-resources/icon-note.gif) **说明：** 
     > 
@@ -1382,14 +1384,14 @@ OSD是Ceph集群数据管理服务。添加OSD的磁盘需满足以下所有条�
 >
 >- 部署Ceph需要使用root用户。
 >- 使能SPDK需要关闭IOMMU特性（Arm下为SMMU）。
->    1. 重启服务器，进入BIOS界面，具体可参见[《TaiShan 服务器 BIOS 参数参考（鲲鹏920处理器）》](https://support.huawei.com/enterprise/zh/doc/EDOC1100088653/a77cbc34)中的`进入BIOS界面`相关内容。
+>    1. 重启服务器，进入BIOS界面，具体可参见《[TaiShan 服务器 BIOS 参数参考（鲲鹏920处理器）](https://support.huawei.com/enterprise/zh/doc/EDOC1100088653/a77cbc34)》中的`进入BIOS界面`相关内容。
 >    2. 在BIOS界面中依次单击`Advanced`\>`MISC Config`\>`Support Smmu`  进入SMMU配置页。
 >
->        <img src="figures/BIOS界面.png" width="50%"/>
+>        <img src="figures/BIOS界面.png" width="50%" alt="BIOS界面依次进入Advanced、MISC Config、Support Smmu的SMMU配置页" />
 >
 >    3. 将`Support Smmu`设置为`Disabled`，按`F10`保存退出（永久有效）。
 >        
->        <img src="figures/关闭SMMU.png" width="50%"/>
+>        <img src="figures/关闭SMMU.png" width="50%" alt="在Support Smmu选项中取值为Disabled并按F10保存退出的设置界面"/>
 >
 >- 当前部署需要在所有服务端物理节点执行。
 >- 该磁盘设备必须没有分区。
@@ -1433,7 +1435,7 @@ OSD是Ceph集群数据管理服务。添加OSD的磁盘需满足以下所有条�
     chmod +x /etc/rc.d/rc.local
     ```
 
-    ![](figures/zh-cn_image_0000002551552443.png)
+    ![将大页内存配置与NVMe驱动切换命令写入rc.local的编辑结果](figures/zh-cn_image_0000002551552443.png)
 
 5. <a id="zh-cn_topic_0000001173276984_zh-cn_topic_0266583442_zh-cn_topic_0266851355_li10464154919390"></a>查看系统可用磁盘设备。
 
@@ -1441,7 +1443,7 @@ OSD是Ceph集群数据管理服务。添加OSD的磁盘需满足以下所有条�
     cephadm shell sh /var/lib/ceph/spdk_lib/scripts/setup.sh status
     ```
 
-    ![](figures/zh-cn_image_0000002520032448.png)
+    ![setup.sh status命令返回的系统可用NVMe磁盘设备列表](figures/zh-cn_image_0000002520032448.png)
 
 6. 关闭OSD内存自动调节。
 
@@ -1526,13 +1528,13 @@ OSD是Ceph集群数据管理服务。添加OSD的磁盘需满足以下所有条�
     ceph -s
     ```
 
-    ![](figures/20250212155903.png)
+    ![ceph -s命令返回的SPDK OSD集群运行状态](figures/20250212155903.png)
 
     ```sh
     ceph orch ps
     ```
 
-    ![](figures/20250212155822.png)
+    ![ceph orch ps命令返回的SPDK OSD守护进程列表](figures/20250212155822.png)
 
 OSD是Ceph集群数据管理服务。添加OSD的磁盘需满足以下所有条件。
 
@@ -1577,7 +1579,7 @@ OSD是Ceph集群数据管理服务。添加OSD的磁盘需满足以下所有条�
     librados_thread_count = 3
     ```
 
-    ![](figures/zh-cn_image_0000002551552437.png)
+    ![客户端ceph.conf中新增ms_async_ucx_event_polling等参数后的编辑结果](figures/zh-cn_image_0000002551552437.png)
 
 4. 将文件拷贝到客户端容器。
 
@@ -1602,7 +1604,7 @@ OSD是Ceph集群数据管理服务。添加OSD的磁盘需满足以下所有条�
     ceph -s
     ```
 
-    ![](figures/zh-cn_image_0000002551432443.png)
+    ![客户端容器内ceph -s返回的集群状态，确认客户端可访问Ceph存储](figures/zh-cn_image_0000002551432443.png)
 
 ### 卸载Ceph<a name="ZH-CN_TOPIC_0000002551432421"></a>
 
@@ -1649,7 +1651,7 @@ OSD是Ceph集群数据管理服务。添加OSD的磁盘需满足以下所有条�
 
     命令返回0表示[步骤1](#li1100413134)配置成功。
 
-    ![](figures/zh-cn_image_0000002551432439.png)
+    ![display dcb pfc-profile命令返回的PFC优先级使能回显，返回0表示配置成功](figures/zh-cn_image_0000002551432439.png)
 
 3. <a id="li1586514481310"></a>配置ECN（Explicit Congestion Notification）。
 
@@ -1668,7 +1670,7 @@ OSD是Ceph集群数据管理服务。添加OSD的磁盘需满足以下所有条�
 
     命令返回如下信息，表示[步骤3](#li1586514481310)配置成功。
 
-    ![](figures/zh-cn_image_0000002520352454.png)
+    ![display drop-profile ecn命令返回的ECN配置回显，确认拥塞通告配置生效](figures/zh-cn_image_0000002520352454.png)
 
 5. <a id="li202741334141411"></a>为每个流量端口配置流控，此处以`25GE 1/0/5`端口为例进行配置。
 
@@ -1713,11 +1715,11 @@ OSD是Ceph集群数据管理服务。添加OSD的磁盘需满足以下所有条�
     mlnx_qos -i enp133s0f1
     ```
 
-    ![](figures/zh-cn_image_0000002520352466.png)
+    ![mlnx_qos -i命令返回的两个RoCE网口优先级队列配置结果](figures/zh-cn_image_0000002520352466.png)
 
 3. 若有出现lldpad告警，则需要关闭lldpad服务，并重新配置以上配置。
 
-    ![](figures/zh-cn_image_0000002551432453.png)
+    ![网卡优先级队列配置过程中出现的lldpad服务告警回显](figures/zh-cn_image_0000002551432453.png)
 
     ```sh
     systemctl stop lldpad
@@ -1733,11 +1735,11 @@ OSD是Ceph集群数据管理服务。添加OSD的磁盘需满足以下所有条�
 
     网口enp133s0f0返回如下图所示：
 
-    ![](figures/网口enp133s0f0返回示例.png "网口enp133s0f0返回示例-63")
+    ![ethtool -S enp133s0f0的prio统计回显，数值持续变化表示网卡有流量](figures/网口enp133s0f0返回示例.png "网口enp133s0f0返回示例-63")
     
     网口enp133s0f1返回如下图所示：
 
-    ![](figures/网口enp133s0f1返回示例.png "网口enp133s0f1返回示例-64")
+    ![ethtool -S enp133s0f1的prio统计回显，数值持续变化表示网卡有流量](figures/网口enp133s0f1返回示例.png "网口enp133s0f1返回示例-64")
     
 ## 常见问题<a name="ZH-CN_TOPIC_0000002520032432"></a>
 
@@ -1828,7 +1830,7 @@ Ceph 17.2.8存在已知问题，详见[Ceph社区PR](https://github.com/ceph/cep
     }
     ```
 
-    ![](figures/改动后的对比图.png "改动后的对比图-65")
+    ![BlueFS.cc第3120行至3132行按修改方案调整后的代码对比](figures/改动后的对比图.png "改动后的对比图-65")
 
 2. 重新编译部署Ceph。
 
@@ -1838,9 +1840,9 @@ Ceph 17.2.8存在已知问题，详见[Ceph社区PR](https://github.com/ceph/cep
 
 在执行业务相关操作时，报错如下图所示。
 
-![](figures/zh-cn_image_0000002551432445.png)
+![执行业务操作时驱动报错的首个报错信息截图，提示UCX注册内存失败](figures/zh-cn_image_0000002551432445.png)
 
-![](figures/报错信息.png "报错信息-67")
+![业务执行时驱动报错的详细回显，提示注册内存超出硬件缓冲区大小限制](figures/报错信息.png "报错信息-67")
 
 **原因分析<a name="section10617103715593"></a>**
 
@@ -1895,7 +1897,7 @@ UCX业务注册RCache内存过大，超出了硬件缓冲区大小限制，解�
             MTU=4200
             ```
 
-            ![](figures/zh-cn_image_0000002520352460.png)
+            ![ifcfg-bond-bond_01中BONDING_OPTS与MTU修改为指定值后的编辑结果](figures/zh-cn_image_0000002520352460.png)
 
         3. 按`Esc`键退出编辑模式，输入`:wq!`，按`Enter`键保存并退出文件。
 
@@ -1934,7 +1936,7 @@ UCX业务注册RCache内存过大，超出了硬件缓冲区大小限制，解�
 
 在执行业务相关操作时，报错下图所示。
 
-![](figures/报错信息.png "报错信息-69")
+![部署SPDK OSD时的报错回显，提示内存模式为VA](figures/报错信息.png "报错信息-69")
 
 **原因分析<a name="section10617103715593"></a>**
 
@@ -1945,11 +1947,11 @@ UCX业务注册RCache内存过大，超出了硬件缓冲区大小限制，解�
 1. 参见《[TaiShan 服务器 BIOS 参数参考（鲲鹏920处理器）](https://support.huawei.com/enterprise/zh/doc/EDOC1100088653/a77cbc34)》中`进入BIOS界面`的相关内容，进入BIOS界面。
 2. 依次进入`Advanced` \> `MISC Config` \> `Support Smmu`。
 
-    ![](figures/zh-cn_image_0000002551552435.png)
+    ![BIOS界面依次进入Advanced、MISC Config、Support Smmu的配置路径](figures/zh-cn_image_0000002551552435.png)
 
 3. 将`Support Smmu`设置为`Disabled`，按`F10`键保存退出。
 
-    ![](figures/zh-cn_image_0000002520032442.png)
+    ![将Support Smmu选项设置为Disabled并按F10保存退出的设置界面](figures/zh-cn_image_0000002520032442.png)
 
 ### 部署OSD后集群中OSD节点状态不能变为up状态<a name="ZH-CN_TOPIC_0000002551552423"></a>
 
@@ -2053,7 +2055,7 @@ TELEMETRY: No legacy callbacks, legacy socket not created
     yum install createrepo perl pciutils gcc-gfortran tcsh expat glib2 tcl libstdc++ bc tk gtk2 atk cairo numactl pkgconfig ethtool lsof rpm-build python3-libxml2 python autoconf automake libtool
     ```
 
-4. 单击[获取链接](https://support.huawei.com/enterprise/zh/management-software/computing-component-idriver-pid-259488843/software/262409128?idAbsPath=fixnode01%7C23710424%7C251364417%7C251364851%7C254884035%7C259488843)下载网卡驱动。
+4. 单击[iDriver网卡驱动下载页面](https://support.huawei.com/enterprise/zh/management-software/computing-component-idriver-pid-259488843/software/262409128?idAbsPath=fixnode01%7C23710424%7C251364417%7C251364851%7C254884035%7C259488843)。
 
     > ![](public_sys-resources/icon-note.gif) **说明：** 
     > 
@@ -2080,7 +2082,7 @@ TELEMETRY: No legacy callbacks, legacy socket not created
         - 方式二：通过脚本自动安装。
 
             ```sh
-            ./install.sh  （参考同目录下的readme_zh.txt）
+            ./install.sh
             ```
 
 6. 重新加载驱动。
@@ -2114,7 +2116,7 @@ TELEMETRY: No legacy callbacks, legacy socket not created
 
 在cephadm shell启动的容器中，执行`ibv_devices`时，在容器中未显示SP670的RDMA设备。
 
-![](figures/zh-cn_image_0000002520032436.png)
+![容器中执行ibv_devices未显示SP670 RDMA设备的回显](figures/zh-cn_image_0000002520032436.png)
 
 **问题原因<a name="section833701191218"></a>**
 
@@ -2133,7 +2135,7 @@ TELEMETRY: No legacy callbacks, legacy socket not created
     hinicadm3 updatefw -i hinic0 -f ./SP670/Hinic3_flash.bin -or
     ```
 
-    ![](figures/zh-cn_image_0000002551432435.png)
+    ![hinicadm3 updatefw命令升级SP670固件的执行回显](figures/zh-cn_image_0000002551432435.png)
 
 3. 安装驱动。容器和物理机都需要安装它们各自的OS内核对应的驱动版本，此处以openEuler22.03SP4为例进行举例说明。
 
@@ -2149,7 +2151,7 @@ TELEMETRY: No legacy callbacks, legacy socket not created
 
     > ![](public_sys-resources/icon-note.gif) **说明：**
     > 
-    > 可以使用`ethtool -i [设备名]`检查固件和驱动版本，需要重新制作Ceph部署容器，参考[5.2.3](#skip_001)，并在制作过程中完成驱动安装。
+    > 可以使用`ethtool -i [设备名]`检查固件和驱动版本，需要重新制作Ceph部署容器，参考[制作部署镜像](#skip_001)，并在制作过程中完成驱动安装。
 
 ### 解决UCX使用SP670网卡报错<a name="ZH-CN_TOPIC_0000002551552425"></a>
 
@@ -2157,7 +2159,7 @@ TELEMETRY: No legacy callbacks, legacy socket not created
 
 在cephadm shell启动的容器中，执行`ucx_info -d`扫描设备时，出现如下报错。
 
-![](figures/zh-cn_image_0000002520352450.png)
+![容器中执行ucx_info -d扫描设备时的报错回显](figures/zh-cn_image_0000002520352450.png)
 
 **问题原因<a name="section18208111291513"></a>**
 
@@ -2165,7 +2167,7 @@ TELEMETRY: No legacy callbacks, legacy socket not created
 
 **解决方法<a name="section5188164015718"></a>**
 
-1. 为了解决该问题，需要在[章节5.1](#编译和安装UCX)基础上，再修改一行代码。参考下方的代码完成修改。
+1. 为了解决该问题，需要在[编译和安装UCX](#编译和安装UCX)基础上，再修改一行代码。参考下方的代码完成修改。
 
     ```sh
     cd /root/rpmbuild/SOURCES/
@@ -2175,7 +2177,7 @@ TELEMETRY: No legacy callbacks, legacy socket not created
 
     修改`RX_QUEUE_LEN`默认值，从4096修改为4095。
 
-    ![](figures/zh-cn_image_0000002520352448.png)
+    ![ib_iface.c中RX_QUEUE_LEN默认值由4096调整为4095的编辑结果](figures/zh-cn_image_0000002520352448.png)
 
     对该文件进行打包。
 
@@ -2193,7 +2195,7 @@ TELEMETRY: No legacy callbacks, legacy socket not created
 
     编译完成后在`/root/rpmbuild/RPMS/aarch64`目录会生成如下图所示的8个RPM包。
 
-    ![](figures/zh-cn_image_0000002520032438.png)
+    ![重新编译UCX后在RPMS/aarch64目录生成的8个RPM包列表](figures/zh-cn_image_0000002520032438.png)
 
 3. 使用本地镜像启动一个临时容器。
 

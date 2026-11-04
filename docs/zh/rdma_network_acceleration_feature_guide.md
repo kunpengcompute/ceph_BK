@@ -1,5 +1,7 @@
 # RDMA网络加速特性指南
 
+本文档介绍RDMA网络加速特性，说明在openEuler 20.03 LTS SP4操作系统的鲲鹏服务器上通过UCX为Ceph集群前后端网络使能RDMA的方法，适用于部署Ceph分布式存储集群并需要配置网络加速特性的用户。
+
 ## 特性描述<a name="ZH-CN_TOPIC_0000002520751404"></a>
 
 ### 简介<a name="ZH-CN_TOPIC_0000002551871375"></a>
@@ -40,7 +42,7 @@ RDMA网络加速特性主要使用UCX适配Ceph分布式存储开源版本主流
 
 环境组网使用分布式存储Ceph系统，3\*client + 3\*server。
 
-![](figures/220610144846660.png)
+![Ceph集群环境组网拓扑：3个客户端节点与3个服务端节点通过网卡互联](figures/220610144846660.png)
 
 **硬件要求<a name="section116628440251"></a>**
 
@@ -58,9 +60,9 @@ RDMA网络加速特性主要使用UCX适配Ceph分布式存储开源版本主流
 
 | 项目      | 版本                      | 获取地址                                                                                                                           |
 |---------|-------------------------|--------------------------------------------------------------------------------------------------------------------------------|
-| 物理机操作系统 | openEuler 20.03 LTS SP4 | [获取链接](https://mirrors.tools.huawei.com/openeuler/openEuler-20.03-LTS-SP4/ISO/aarch64/openEuler-20.03-LTS-SP4-aarch64-dvd.iso) |
-| Ceph    | 14.2.8                  | [获取链接](https://download.ceph.com/tarballs/ceph-14.2.8.tar.gz)                                                                  |
-| UCX     | 1.14.1                  | [获取链接](https://github.com/openucx/ucx/releases/download/v1.14.1/ucx-1.14.1-1.el7.src.rpm)                                      |
+| 物理机操作系统 | openEuler 20.03 LTS SP4 | [openEuler 20.03 LTS SP4操作系统ISO下载页面](https://mirrors.tools.huawei.com/openeuler/openEuler-20.03-LTS-SP4/ISO/aarch64/openEuler-20.03-LTS-SP4-aarch64-dvd.iso) |
+| Ceph    | 14.2.8                  | [ceph-14.2.8源码包下载页面](https://download.ceph.com/tarballs/ceph-14.2.8.tar.gz)                                                                  |
+| UCX     | 1.14.1                  | [UCX 1.14.1源码RPM包下载页面](https://github.com/openucx/ucx/releases/download/v1.14.1/ucx-1.14.1-1.el7.src.rpm)                                      |
 
 ## 获取软件包<a name="ZH-CN_TOPIC_0000002551791389"></a>
 
@@ -68,7 +70,7 @@ RDMA网络加速特性主要使用UCX适配Ceph分布式存储开源版本主流
 
 | 软件包                   | 说明             | 获取路径                                                                                     |
 |-----------------------|----------------|------------------------------------------------------------------------------------------|
-| ceph-14.2.8-ucx.patch | Ceph适配UCX的补丁文件 | [获取链接](https://gitcode.com/boostkit/ceph_BK/blob/master/ceph-14.2.8-ucx.patch) |
+| ceph-14.2.8-ucx.patch | Ceph适配UCX的补丁文件 | [ceph-14.2.8-ucx.patch补丁文件](https://gitcode.com/boostkit/ceph_BK/blob/master/ceph-14.2.8-ucx.patch) |
 
 在编译和部署UCX之前，需要准备以下软件包和文件。
 
@@ -128,7 +130,7 @@ RDMA网络加速特性主要使用UCX适配Ceph分布式存储开源版本主流
 
     编译完成后在`/root/rpmbuild/RPMS/aarch64`目录下会生成如下图所示的8个RPM包。
 
-    ![](figures/zh-cn_image_0000002551791423.png)
+    ![编译完成后/root/rpmbuild/RPMS/aarch64目录下生成的8个RPM包列表截图](figures/zh-cn_image_0000002551791423.png)
 
 6. 安装RPM包。
 
@@ -203,7 +205,7 @@ RDMA网络加速特性主要使用UCX适配Ceph分布式存储开源版本主流
     systemctl status firewalld
     ```
 
-    ![](figures/zh-cn_image_0000002551871407.png)
+    ![关闭防火墙后执行systemctl status firewalld显示防火墙已停止的运行状态回显](figures/zh-cn_image_0000002551871407.png)
 
 2. 配置主机名。
 
@@ -310,7 +312,7 @@ RDMA网络加速特性主要使用UCX适配Ceph分布式存储开源版本主流
             systemctl status ntpd 
             ```
 
-            ![](figures/zh-cn_image_0000002520911410.png)
+            ![ceph1节点执行systemctl status ntpd显示NTP服务已启动并处于运行中](figures/zh-cn_image_0000002520911410.png)
 
         2. 在除ceph1的所有节点强制同步server（ceph1）时间。
 
@@ -363,9 +365,9 @@ RDMA网络加速特性主要使用UCX适配Ceph分布式存储开源版本主流
     > 
     > 输入第一条命令`ssh-keygen -t rsa`之后，按回车使用默认配置。
     >
-    > ![](figures/zh-cn_image_0000002520911418.png)
+    > ![执行ssh-keygen -t rsa后按回车采用默认路径与空口令生成密钥对的回显](figures/zh-cn_image_0000002520911418.png)
     >
-    > ![](figures/zh-cn_image_0000002520751426.png)
+    > ![执行ssh-copy-id分发公钥到ceph与client节点时提示公钥添加成功的回显](figures/zh-cn_image_0000002520751426.png)
 
 5. 设置permissive模式。
 
@@ -377,7 +379,7 @@ RDMA网络加速特性主要使用UCX适配Ceph分布式存储开源版本主流
         setenforce permissive
         ```
 
-        ![](figures/zh-cn_image_0000002520751432.png)
+        ![执行setenforce permissive临时关闭SELinux后无报错的命令回显](figures/zh-cn_image_0000002520751432.png)
 
     - 永久设置，下次重启自动生效。
 
@@ -387,11 +389,11 @@ RDMA网络加速特性主要使用UCX适配Ceph分布式存储开源版本主流
 
         修改`SELINUX=permissive`。
 
-        ![](figures/permissive.png)
+        ![编辑/etc/selinux/config将SELINUX取值修改为permissive的配置内容截图](figures/permissive.png)
 
 ### 安装Ceph<a name="ZH-CN_TOPIC_0000002520911384"></a>
 
-请在所有server节点和client节点安装Ceph。
+请在所有服务端节点和客户端节点安装Ceph。
 
 1. 设置所有服务端节点和客户端节点Yum证书的验证状态为不验证。
     1. 打开文件。
@@ -494,7 +496,7 @@ RDMA网络加速特性主要使用UCX适配Ceph分布式存储开源版本主流
     > 
     > 安装Ceph过程中，注意校验gperftool的版本为2.7-7版本。
     >
-    > ![](figures/zh-cn_image_0000002551871403.png)
+    > ![安装Ceph过程中查询gperftools版本为2.7-7的校验结果截图](figures/zh-cn_image_0000002551871403.png)
 
 8. 在ceph1节点安装ceph-deploy。
 
@@ -515,7 +517,7 @@ RDMA网络加速特性主要使用UCX适配Ceph分布式存储开源版本主流
         'openeuler':fedora,
         ```
 
-        ![](figures/zh-cn_image_0000002551791413.png)
+        ![ceph_deploy的__init__.py中_get_distro函数新增openeuler对应fedora的代码截图](figures/zh-cn_image_0000002551791413.png)
 
     3. 按`Esc`键退出编辑模式，输入`:wq!`，按`Enter`键保存并退出文件。
 
@@ -546,7 +548,7 @@ MON（Monitor）负责监控整个Ceph集群的状态。部署MON操作步骤仅
     ceph-deploy new ceph1 ceph2 ceph3
     ```
 
-    ![](figures/zh-cn_image_0000002551791429.png)
+    ![ceph-deploy new创建集群后在/etc/ceph目录生成配置文件的命令回显](figures/zh-cn_image_0000002551791429.png)
 
 2. 配置Ceph集群的全局参数和MON参数。
 
@@ -604,7 +606,7 @@ MON（Monitor）负责监控整个Ceph集群的状态。部署MON操作步骤仅
     ceph-deploy mon create-initial
     ```
 
-    ![](figures/zh-cn_image_0000002520911426.png)
+    ![初始化监视器后生成ceph.client.admin.keyring等密钥文件的命令回显](figures/zh-cn_image_0000002520911426.png)
 
 4. 将[步骤3](#zh-cn_topic_0000001210295277_li165307499543)执行成功后生成的`ceph.client.admin.keyring`拷贝到各个节点上。
 
@@ -612,7 +614,7 @@ MON（Monitor）负责监控整个Ceph集群的状态。部署MON操作步骤仅
     ceph-deploy --overwrite-conf admin ceph1 ceph2 ceph3 client1 client2 client3
     ```
 
-    ![](figures/zh-cn_image_0000002520751438.png)
+    ![下发admin密钥环到各节点时提示覆盖配置并写入成功的回显](figures/zh-cn_image_0000002520751438.png)
 
 5. 检查Ceph集群的状态，确认是否配置MON成功。
 
@@ -648,7 +650,7 @@ MGR（Manager）是Ceph集群管理的关键组件，它主要负责收集Ceph�
     ceph-deploy mgr create ceph1 ceph2 ceph3
     ```
 
-    ![](figures/截图.png)
+    ![ceph-deploy mgr创建MGR后集群中新增mgr进程的命令回显](figures/截图.png)
 
 2. 检查Ceph集群的状态，确认MGR是否部署成功。
 
@@ -737,7 +739,7 @@ NVMe盘划分为12个60GB分区、12个180GB分区，分别对应WAL分区、DB�
     ceph -s
     ```
 
-    ![](figures/zh-cn_image_0000002520911420.png)
+    ![添加OSD后执行ceph -s显示OSD数量与集群健康状态正常的回显](figures/zh-cn_image_0000002520911420.png)
 
 NVMe盘划分为12个60GB分区、12个180GB分区，分别对应WAL分区、DB分区。
 
@@ -779,7 +781,7 @@ NVMe盘划分为12个60GB分区、12个180GB分区，分别对应WAL分区、DB�
 
     如果支持RoCE，将返回如下信息：
 
-    ![](figures/zh-cn_image_0000002551871393.png)
+    ![执行lspci查询Mellanox网卡，返回网卡设备型号与PCIe地址的回显](figures/zh-cn_image_0000002551871393.png)
 
 2. 在所有服务端节点停止Ceph服务。
 
@@ -846,7 +848,7 @@ NVMe盘划分为12个60GB分区、12个180GB分区，分别对应WAL分区、DB�
 
 7. 修改`/lib/systemd/system/`文件中的`ceph-mds@.service`、`ceph-mgr@.service`、`ceph-mon@.service`和`ceph-osd@.service`，在After和Wants字段下新增如下信息。
 
-    ![](figures/zh-cn_image_0000002551871397.png)
+    ![ceph服务systemd单元文件中After和Wants字段新增依赖项后的配置截图](figures/zh-cn_image_0000002551871397.png)
 
 8. 配置openibd启动后等待60s。
 
@@ -860,7 +862,7 @@ NVMe盘划分为12个60GB分区、12个180GB分区，分别对应WAL分区、DB�
     ExecStartPost=/bin/sleep 60
     ```
 
-    ![](figures/zh-cn_image_0000002551791409.png)
+    ![openibd.service中新增ExecStartPost=/bin/sleep 60配置项的截图](figures/zh-cn_image_0000002551791409.png)
 
 9. 在所有服务端节点和客户端节点设置如下。
 
@@ -881,7 +883,7 @@ NVMe盘划分为12个60GB分区、12个180GB分区，分别对应WAL分区、DB�
 
     4个安装包均已安装的预期结果示例。
 
-    ![](figures/zh-cn_image_0000002551871399.png)
+    ![执行rpm -qa查询ucx确认4个UCX安装包均已安装的回显](figures/zh-cn_image_0000002551871399.png)
 
 11. 更新配置并启动Ceph。
 
@@ -918,7 +920,7 @@ NVMe盘划分为12个60GB分区、12个180GB分区，分别对应WAL分区、DB�
 
     命令返回0表示[步骤1](#li1100413134)配置成功。
 
-    ![](figures/zh-cn_image_0000002520751420.png)
+    ![交换机执行display dcb pfc-profile显示PFC优先级已使能并返回0的回显](figures/zh-cn_image_0000002520751420.png)
 
 3. <a id="li1586514481310"></a>配置ECN（Explicit Congestion Notification）。
 
@@ -938,7 +940,7 @@ NVMe盘划分为12个60GB分区、12个180GB分区，分别对应WAL分区、DB�
 
     命令返回如下信息，表示[步骤3](#li1586514481310)配置成功。
 
-    ![](figures/zh-cn_image_0000002520911404.png)
+    ![交换机执行display drop-profile ecn显示ECN丢弃参数配置结果的回显](figures/zh-cn_image_0000002520911404.png)
 
 5. <a id="li202741334141411"></a>为每个流量端口配置流控。此处以25GE 1/0/5端口为例。
 
@@ -987,11 +989,11 @@ NVMe盘划分为12个60GB分区、12个180GB分区，分别对应WAL分区、DB�
 
     **如果返回的网口流量会变化，表示网卡有流量。**
 
-    ![](figures/网口enp133s0f0返回示例.png "网口enp133s0f0返回示例-115")
+    ![enp133s0f0网口执行ethtool -S查看prio队列计数并随时间变化的返回示例](figures/网口enp133s0f0返回示例.png "网口enp133s0f0返回示例-115")
 
     **图 1** 网口enp133s0f0返回示例<a name="fig22151324163920"></a><a id="网口enp133s0f0返回示例"></a>
     
-    ![](figures/网口enp133s0f1返回示例.png "网口enp133s0f1返回示例-116")
+    ![enp133s0f1网口执行ethtool -S查看prio队列计数并随时间变化的返回示例](figures/网口enp133s0f1返回示例.png "网口enp133s0f1返回示例-116")
 
     **图 2** 网口enp133s0f1返回示例<a name="fig97302564393"></a><a id="网口enp133s0f1返回示例"></a>
 
@@ -1079,7 +1081,7 @@ NVMe盘划分为12个60GB分区、12个180GB分区，分别对应WAL分区、DB�
 
 在执行业务相关操作时，报错如[**图 1** 报错信息](#报错信息)所示。
 
-![](figures/报错信息.png "报错信息-117")
+![业务执行时dmesg中出现的驱动报错信息内容截图](figures/报错信息.png "报错信息-117")
 
 **图 1** 报错信息<a name="fig12478132704215"></a><a id="报错信息"></a>
 
@@ -1099,7 +1101,7 @@ reboot
 
 ### SP670网卡需要更新驱动才能支持UCX<a name="ZH-CN_TOPIC_0000002520751412"></a>
 
-1. 参见[获取链接](https://support.huawei.com/enterprise/zh/huawei-computing-components/in220-pid-253287505/software/266018371?idAbsPath=fixnode01)下载最新的固件和驱动安装包并解压（NIC-FW-17.12.1.2.tar.gz、SDK\_LINUX-17.12.1.2-openEuler22.03SP4-aarch64.tar.gz）。
+1. 参见[SP670网卡固件和驱动安装包下载页面](https://support.huawei.com/enterprise/zh/huawei-computing-components/in220-pid-253287505/software/266018371?idAbsPath=fixnode01)下载最新的固件和驱动安装包并解压（NIC-FW-17.12.1.2.tar.gz、SDK\_LINUX-17.12.1.2-openEuler22.03SP4-aarch64.tar.gz）。
 2. 升级固件。
 
     ```sh
@@ -1109,7 +1111,7 @@ reboot
     hinicadm3 updatefw -i hinic0 -f ./SP670/Hinic3_flash.bin -or
     ```
 
-    ![](figures/zh-cn_image_0000002551871415.png)
+    ![执行hinicadm3 updatefw升级SP670网卡固件后提示升级成功的回显](figures/zh-cn_image_0000002551871415.png)
 
 3. 安装驱动。需要安装其OS内核对应的驱动版本，这里以openEuler 22.03 LTS SP4为例进行说明。
 
@@ -1129,7 +1131,7 @@ reboot
 
 `ucx_info -d`扫描设备时，出现如下报错。
 
-![](figures/zh-cn_image_0000002551791419.png)
+![ucx_info -d扫描设备时输出UCX初始化报错的内容截图](figures/zh-cn_image_0000002551791419.png)
 
 **问题原因<a name="section17231118112312"></a>**
 
@@ -1147,7 +1149,7 @@ reboot
 
     修改`RX_QUEUE_LEN`默认值，从4096修改为4095。
 
-    ![](figures/zh-cn_image_0000002551791415.png)
+    ![ucx-1.14.1的ib_iface.c中RX_QUEUE_LEN默认值由4096改为4095的代码截图](figures/zh-cn_image_0000002551791415.png)
 
     对该文件进行打包。
 
@@ -1165,7 +1167,7 @@ reboot
 
     编译完成后在`/root/rpmbuild/RPMS/aarch64`目录会生成如下图所示的8个RPM包。
 
-    ![](figures/zh-cn_image_0000002551871409.png)
+    ![修改队列深度重新编译后在/root/rpmbuild/RPMS/aarch64生成的8个RPM包列表截图](figures/zh-cn_image_0000002551871409.png)
 
 3. 安装RPM包。
 

@@ -1,5 +1,7 @@
 # 数据压紧特性指南
 
+本文档介绍数据压紧特性的使能方法，通过在Ceph上合入数据压紧算法软件并编译部署，提升数据缩减率与系统整体IOPS，适用于在鲲鹏服务器Ceph集群上使能数据压紧功能的用户。
+
 ## 简介<a name="ZH-CN_TOPIC_0000002521000682"></a>
 
 鲲鹏BoostKit分布式存储数据压紧算法（以下简称“数据压紧算法”）部署在开源分布式存储集群Ceph上，通过消除补零对齐操作带来的数据浪费问题，结合压紧封装、空间计数分配、粒度分流、聚合提交、批量回调等手段提升数据缩减率并提升系统整体IOPS，实现成本性能双收益。
@@ -114,7 +116,7 @@
     vi /etc/yum.repos.d/CentOS-SCLo-scl-rh.repo
     ```
 
-    ![](figures/zh-cn_image_0000002520840706.png)
+    ![CentOS-SCLo-scl-rh.repo中baseurl由http改为https的编辑界面截图](figures/zh-cn_image_0000002520840706.png)
 
 4. 设置yum证书验证。
 
@@ -269,7 +271,7 @@
 
         修改`%_topdir`为`/home/rpmbuild`。
 
-        ![](figures/zh-cn_image_0000002520840708.png)
+        ![修改/root/.rpmmacros，将%_topdir取值改为/home/rpmbuild的界面截图](figures/zh-cn_image_0000002520840708.png)
 
     3. 再次执行rpmbuild安装命令。
 
@@ -281,7 +283,7 @@
 
 **CentOS 7.6<a name="section116341113564"></a>**
 
-1. 修改ceph.spec文件。
+1. 修改ceph.spec.in文件。
 
     ```sh
     cd /home/ceph-14.2.8/
@@ -290,7 +292,7 @@
 
     修改scipy版本为“python36-scipy”。
 
-    ![](figures/scipy.png)
+    ![ceph.spec.in中scipy依赖版本改为python36-scipy的修改位置截图](figures/scipy.png)
 
 2. 修改`dashboard/requirements.txt`。
 
@@ -329,7 +331,7 @@
     ctest3 -V -R unittest_compression
     ```
 
-    ![](figures/ut.png)
+    ![执行ctest3 -V -R unittest_compression后测试用例全部通过的终端回显](figures/ut.png)
 
 6. 删除`build`目录。
 
@@ -386,7 +388,7 @@
         vim install-deps.sh
         ```
 
-        ![](figures/zh-cn_image_0000002520840710.png)
+        ![install-deps.sh中判断分支增加openEuler操作系统选项的修改位置截图](figures/zh-cn_image_0000002520840710.png)
 
     2. 修改ceph.spec.in。
 
@@ -408,7 +410,7 @@
 
         2. 如下图所示修改`CEPH_MFLAGS_JOBS="-j48"`，提高openEuler版本编译速度。
 
-            ![](figures/zh-cn_image_0000002520840712.png)
+            ![ceph.spec中CEPH_MFLAGS_JOBS参数改为-j48以提升编译速度的修改位置截图](figures/zh-cn_image_0000002520840712.png)
 
 3. 安装依赖并编译。
     1. 安装依赖。
@@ -432,7 +434,7 @@
         ctest3 -V -R unittest_compression
         ```
 
-        ![](figures/zh-cn_image_0000002551960681.png)
+        ![openEuler下执行ctest3 -V -R unittest_compression用例通过的终端回显](figures/zh-cn_image_0000002551960681.png)
 
 ### 生成数据压紧算法RPM包<a name="ZH-CN_TOPIC_0000002552040687"></a>
 
@@ -444,7 +446,7 @@
     vi do_cmake.sh
     ```
 
-    ![](figures/zh-cn_image_0000002521000690.png)
+    ![CentOS下do_cmake.sh中默认BUILD模式改为高性能模式的修改位置截图](figures/zh-cn_image_0000002521000690.png)
 
 2. 将ceph-14.2.8目录打包为tar.bz2格式的压缩包。
 
@@ -477,7 +479,7 @@
     %define _binaries_in_noarch_packages_terminate_build 0
     ```
 
-    ![](figures/zh-cn_image_0000002551960677.png)
+    ![ceph.spec开头新增_binaries_in_noarch_packages_terminate_build宏定义的截图](figures/zh-cn_image_0000002551960677.png)
 
 6. 构建RPM包。
 
@@ -485,11 +487,11 @@
     rpmbuild -bb /home/rpmbuild/SPECS/ceph.spec
     ```
 
-    ![](figures/zh-cn_image_0000002552040691.png)
+    ![执行rpmbuild -bb构建Ceph RPM包过程中的编译进度回显截图](figures/zh-cn_image_0000002552040691.png)
 
     编译过程需要20-30分钟，编译完成后会在`/home/rpmbuild/RPMS`目录下生成两个目录`aarch64`和`noarch`，其中包含有Ceph相关的RPM包。
 
-    ![](figures/zh-cn_image_0000002521000688.png)
+    ![/home/rpmbuild/RPMS下已生成aarch64和noarch两个子目录的终端回显截图](figures/zh-cn_image_0000002521000688.png)
 
 **openEuler 20.03<a name="section966654717572"></a>**
 
@@ -506,7 +508,7 @@
     vi do_cmake.sh
     ```
 
-    ![](figures/zh-cn_image_0000002521000692.png)
+    ![openEuler下do_cmake.sh中默认BUILD模式改为高性能模式的修改位置截图](figures/zh-cn_image_0000002521000692.png)
 
 3. 回到上级目录并将`ceph-14.2.8`目录打包为tar.bz2格式的压缩包。
 
@@ -541,11 +543,11 @@
         rpmbuild -bb /home/rpmbuild/SPECS/ceph.spec
         ```
 
-        ![](figures/zh-cn_image_0000002552040695.png)
+        ![openEuler下执行rpmbuild -bb构建Ceph RPM包过程中的编译进度回显截图](figures/zh-cn_image_0000002552040695.png)
 
         编译过程需要20-30分钟，编译完成后会在`/home/rpmbuild/RPMS`目录下生成两个目录`aarch64`和`noarch`，其中包含有Ceph相关的RPM包。
 
-        ![](figures/zh-cn_image_0000002552040693.png)
+        ![openEuler下rpmbuild目录RPMS中生成aarch64和noarch子目录的终端回显](figures/zh-cn_image_0000002552040693.png)
 
 ### 部署Ceph集群<a name="ZH-CN_TOPIC_0000002520840704"></a>
 
@@ -593,7 +595,7 @@
 
     `osd_op_num_shards_hdd`与`osd_op_num_threads_per_shard_hdd`相乘为OSD进程处理I/O请求的线程数，默认为5\*1，修改为12\*2可以保证数据压紧算法发挥最大性能。
 
-    >![](public_sys-resources/icon-note.gif) **说明：**
+    >![ceph.conf中OSD分片数与每分片线程数改为12和2的配置修改截图](public_sys-resources/icon-note.gif) **说明：**
     > 
     > - 本步骤提供配置项仅针对HDD场景适用。
     > - 该修改可在部署完OSD后动态调整。
