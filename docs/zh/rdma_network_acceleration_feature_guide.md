@@ -130,7 +130,7 @@ RDMA网络加速特性主要使用UCX适配Ceph分布式存储开源版本主流
 
     编译完成后在`/root/rpmbuild/RPMS/aarch64`目录下会生成如下图所示的8个RPM包。
 
-    ![编译完成后/root/rpmbuild/RPMS/aarch64目录下生成的8个RPM包列表截图](figures/zh-cn_image_0000002551791423.png)
+    ![编译完成后/root/rpmbuild/RPMS/aarch64目录下生成的8个RPM包列表](figures/zh-cn_image_0000002551791423.png)
 
 6. 安装RPM包。
 
@@ -389,7 +389,7 @@ RDMA网络加速特性主要使用UCX适配Ceph分布式存储开源版本主流
 
         修改`SELINUX=permissive`。
 
-        ![编辑/etc/selinux/config将SELINUX取值修改为permissive的配置内容截图](figures/permissive.png)
+        ![编辑/etc/selinux/config将SELINUX取值修改为permissive的配置内容](figures/permissive.png)
 
 ### 安装Ceph<a name="ZH-CN_TOPIC_0000002520911384"></a>
 
@@ -496,7 +496,7 @@ RDMA网络加速特性主要使用UCX适配Ceph分布式存储开源版本主流
     > 
     > 安装Ceph过程中，注意校验gperftool的版本为2.7-7版本。
     >
-    > ![安装Ceph过程中查询gperftools版本为2.7-7的校验结果截图](figures/zh-cn_image_0000002551871403.png)
+    > ![安装Ceph过程中查询gperftools版本为2.7-7的校验结果](figures/zh-cn_image_0000002551871403.png)
 
 8. 在ceph1节点安装ceph-deploy。
 
@@ -517,7 +517,7 @@ RDMA网络加速特性主要使用UCX适配Ceph分布式存储开源版本主流
         'openeuler':fedora,
         ```
 
-        ![ceph_deploy的__init__.py中_get_distro函数新增openeuler对应fedora的代码截图](figures/zh-cn_image_0000002551791413.png)
+        ![ceph_deploy的__init__.py中_get_distro函数新增openeuler对应fedora的代码](figures/zh-cn_image_0000002551791413.png)
 
     3. 按`Esc`键退出编辑模式，输入`:wq!`，按`Enter`键保存并退出文件。
 
@@ -848,7 +848,7 @@ NVMe盘划分为12个60GB分区、12个180GB分区，分别对应WAL分区、DB�
 
 7. 修改`/lib/systemd/system/`文件中的`ceph-mds@.service`、`ceph-mgr@.service`、`ceph-mon@.service`和`ceph-osd@.service`，在After和Wants字段下新增如下信息。
 
-    ![ceph服务systemd单元文件中After和Wants字段新增依赖项后的配置截图](figures/zh-cn_image_0000002551871397.png)
+    ![ceph服务systemd单元文件中After和Wants字段新增依赖项后的配置](figures/zh-cn_image_0000002551871397.png)
 
 8. 配置openibd启动后等待60s。
 
@@ -862,7 +862,7 @@ NVMe盘划分为12个60GB分区、12个180GB分区，分别对应WAL分区、DB�
     ExecStartPost=/bin/sleep 60
     ```
 
-    ![openibd.service中新增ExecStartPost=/bin/sleep 60配置项的截图](figures/zh-cn_image_0000002551791409.png)
+    ![openibd.service中新增ExecStartPost=/bin/sleep 60配置项的](figures/zh-cn_image_0000002551791409.png)
 
 9. 在所有服务端节点和客户端节点设置如下。
 
@@ -1081,7 +1081,7 @@ NVMe盘划分为12个60GB分区、12个180GB分区，分别对应WAL分区、DB�
 
 在执行业务相关操作时，报错如[**图 1** 报错信息](#报错信息)所示。
 
-![业务执行时dmesg中出现的驱动报错信息内容截图](figures/报错信息.png "报错信息-117")
+![业务执行时dmesg中出现的驱动报错信息内容](figures/报错信息.png "报错信息-117")
 
 **图 1** 报错信息<a name="fig12478132704215"></a><a id="报错信息"></a>
 
@@ -1131,7 +1131,7 @@ reboot
 
 `ucx_info -d`扫描设备时，出现如下报错。
 
-![ucx_info -d扫描设备时输出UCX初始化报错的内容截图](figures/zh-cn_image_0000002551791419.png)
+![ucx_info -d扫描设备时输出UCX初始化报错的内容](figures/zh-cn_image_0000002551791419.png)
 
 **问题原因<a name="section17231118112312"></a>**
 
@@ -1149,7 +1149,7 @@ reboot
 
     修改`RX_QUEUE_LEN`默认值，从4096修改为4095。
 
-    ![ucx-1.14.1的ib_iface.c中RX_QUEUE_LEN默认值由4096改为4095的代码截图](figures/zh-cn_image_0000002551791415.png)
+    ![ucx-1.14.1的ib_iface.c中RX_QUEUE_LEN默认值由4096改为4095的代码](figures/zh-cn_image_0000002551791415.png)
 
     对该文件进行打包。
 
@@ -1167,7 +1167,7 @@ reboot
 
     编译完成后在`/root/rpmbuild/RPMS/aarch64`目录会生成如下图所示的8个RPM包。
 
-    ![修改队列深度重新编译后在/root/rpmbuild/RPMS/aarch64生成的8个RPM包列表截图](figures/zh-cn_image_0000002551871409.png)
+    ![修改队列深度重新编译后在/root/rpmbuild/RPMS/aarch64生成的8个RPM包列表](figures/zh-cn_image_0000002551871409.png)
 
 3. 安装RPM包。
 

@@ -859,7 +859,7 @@ Ceph集群部署各客户端IP地址举例如[**表 4** 客户端部署示例](#
     >
     >在终端输入命令后，Public Network（192.168.3.166）对应的网卡名称为enp1330f1，Cluster Network（192.168.4.166）对应的网卡名称为enp1330f2。
     >
-    > ![查看Public Network与Cluster Net的操作界面截图](figures/zh-cn_image_0000002551793157.png)
+    > ![查看Public Network与Cluster Net的操作界面](figures/zh-cn_image_0000002551793157.png)
 
 4. <a id="li26801437175213"></a>搜索Public Network与Cluster Network对应网卡的中断号信息。
 
@@ -873,7 +873,7 @@ Ceph集群部署各客户端IP地址举例如[**表 4** 客户端部署示例](#
     > - 上述命令中的enp133s0f1与enp133s0f2分别对应的是Public Network与Cluster Network对应的网卡名称，若输入命令后没有信息打印，则该网卡不支持直接通过网卡名称获取中断号，需要通过网卡bus信息获取对应的中断号。
     > - 终端输入命令ethtool -i ”网卡名称”获取对应的网卡bus信息。
     >
-    > ![查看Public Network与Cluster Net的操作界面截图](figures/zh-cn_image_0000002520913150.png)
+    > ![查看Public Network与Cluster Net的操作界面](figures/zh-cn_image_0000002520913150.png)
     >
     > 如上图所示enp133s0f0np0网卡的bus信息是0000:85:00.0，将网卡名称替换为bus信息来获取对应的中断号。
     >
@@ -911,7 +911,7 @@ Ceph集群部署各客户端IP地址举例如[**表 4** 客户端部署示例](#
 
 7. 执行4k块写测试用例，详细步骤请参见[测试指导](#测试指导)。
 
-    ![执行4k块写测试用例的操作界面截图](figures/zh-cn_image_0000002551873141.png)
+    ![执行4k块写测试用例的操作界面](figures/zh-cn_image_0000002551873141.png)
 
     > ![](public_sys-resources/icon-note.gif) **说明：** 
     > 
