@@ -116,7 +116,7 @@ Ceph集群部署各客户端IP地址举例如[**表 4** 客户端部署示例](#
         patch -p1 < ceph-ecturbo-optimization.patch
         ```
 
-4. 请参见[《EC Turbo特性指南》](https://www.hikunpeng.com/document/detail/zh/boostsds/ecturbo/docs/zh/ec_turbo_feature_guide.md)中的制作liboath-devel包章节制作liboath-devel包。
+4. 请参见《EC Turbo特性指南》中的[制作liboath-devel](https://www.hikunpeng.com/document/detail/zh/boostsds/ecturbo/docs/zh/ec_turbo_feature_guide.md#制作liboath-devel包)包章节制作liboath-devel包。
 
 5. 请参见《EC Turbo特性指南》中的[编译环境准备](https://www.hikunpeng.com/document/detail/zh/boostsds/ecturbo/docs/zh/ec_turbo_feature_guide.md#环境准备 )章节完成Ceph的编译环境准备。
 

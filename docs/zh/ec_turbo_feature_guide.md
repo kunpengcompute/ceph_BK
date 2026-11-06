@@ -538,7 +538,7 @@ Logrotate是Linux系统中常用的日志管理程序，Crontab是基于时间�
 
 `/etc/logrotate_sdslog.conf`文件是EC Turbo配套的日志文件管理参数，该文件在安装EC Turbo时安装到指定目录。该文件的内容如下：
 
-```output
+```ini
 /var/log/ceph/kpsec*.log {
     rotate 30
     daily
