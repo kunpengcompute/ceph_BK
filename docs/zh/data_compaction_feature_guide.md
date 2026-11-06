@@ -583,9 +583,9 @@
 
     详细操作请参考Ceph部署指导：
 
-    - 块存储场景请参考《Ceph块存储 部署指南》中的[安装Ceph软件](https://www.hikunpeng.com/document/detail/zh/kunpengsdss/ecosystemEnable/Ceph/kunpengcephblock_04_0005.html)、[部署MON节点](https://www.hikunpeng.com/document/detail/zh/kunpengsdss/ecosystemEnable/Ceph/kunpengcephblock_04_0006.html)和[部署MGR节点](https://www.hikunpeng.com/document/detail/zh/kunpengsdss/ecosystemEnable/Ceph/kunpengcephblock_04_0007.html)。
-    - 对象存储场景请参考《Ceph对象存储 部署指南》中的[安装Ceph软件](https://www.hikunpeng.com/document/detail/zh/kunpengsdss/ecosystemEnable/Ceph/kunpengcephobject_04_0005.html)、[部署MON节点](https://www.hikunpeng.com/document/detail/zh/kunpengsdss/ecosystemEnable/Ceph/kunpengcephobject_04_0006.html)和[部署MGR节点](https://www.hikunpeng.com/document/detail/zh/kunpengsdss/ecosystemEnable/Ceph/kunpengcephobject_04_0007.html)。
-    - 文件存储场景请参考《Ceph文件存储 部署指南》中的[安装Ceph软件](https://www.hikunpeng.com/document/detail/zh/kunpengsdss/ecosystemEnable/Ceph/kunpengcephblock_04_0005_1.html)、[部署MON节点](https://www.hikunpeng.com/document/detail/zh/kunpengsdss/ecosystemEnable/Ceph/kunpengcephblock_04_0006_1.html)和[部署MGR节点](https://www.hikunpeng.com/document/detail/zh/kunpengsdss/ecosystemEnable/Ceph/kunpengcephblock_04_0007_1.html)。
+    - 块存储场景请参考《Ceph块存储 部署指南》中的[安装Ceph软件](https://www.hikunpeng.com/document/detail/zh/kunpengsdss/ecosystemEnable/Ceph/kunpengcephblock_DG_04_0023.html)、[部署MON节点](https://www.hikunpeng.com/document/detail/zh/kunpengsdss/ecosystemEnable/Ceph/kunpengcephblock_DG_04_0024.html)和[部署MGR节点](https://www.hikunpeng.com/document/detail/zh/kunpengsdss/ecosystemEnable/Ceph/kunpengcephblock_DG_04_0025.html)。
+    - 对象存储场景请参考《Ceph对象存储 部署指南》中的[安装Ceph软件](https://www.hikunpeng.com/document/detail/zh/kunpengsdss/ecosystemEnable/Ceph/kunpengcephobject_DG_04_0024.html)、[部署MON节点](https://www.hikunpeng.com/document/detail/zh/kunpengsdss/ecosystemEnable/Ceph/kunpengcephobject_DG_04_0025.html)和[部署MGR节点](https://www.hikunpeng.com/document/detail/zh/kunpengsdss/ecosystemEnable/Ceph/kunpengcephobject_DG_04_0026.html)。
+    - 文件存储场景请参考《Ceph文件存储 部署指南》中的[安装Ceph软件](https://www.hikunpeng.com/document/detail/zh/kunpengsdss/ecosystemEnable/Ceph/kunpengcephfilestore_DG_04_0024.html)、[部署MON节点](https://www.hikunpeng.com/document/detail/zh/kunpengsdss/ecosystemEnable/Ceph/kunpengcephfilestore_DG_04_0025.html)和[部署MGR节点](https://www.hikunpeng.com/document/detail/zh/kunpengsdss/ecosystemEnable/Ceph/kunpengcephfilestore_DG_04_0026.html)。
 
     >![](public_sys-resources/icon-note.gif) **说明：**
     > 
@@ -615,7 +615,7 @@
 
 4. 部署OSD。
 
-    详细操作请参考《Ceph块存储 部署指南（CentOS 7.6&openEuler 20.03）》中的[部署OSD节点](https://www.hikunpeng.com/document/detail/zh/kunpengsdss/ecosystemEnable/Ceph/kunpengcephblock_04_0008.html)。
+    详细操作请参考《Ceph块存储 部署指南（CentOS 7.6&openEuler 20.03）》中的[部署OSD节点](https://www.hikunpeng.com/document/detail/zh/kunpengsdss/ecosystemEnable/Ceph/kunpengcephblock_DG_04_0026.html)。
 
 ## 修订记录
 

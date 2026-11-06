@@ -451,7 +451,7 @@ Ceph的数据存储池分为副本和EC两种类型。EC是一种数据保护方
 
 1. 使能EC Turbo特性。
 
-    创建EC存储池请参考《Ceph对象存储 部署指南（CentOS 7.6&openEuler 20.03）》中的“[创建存储池](https://www.hikunpeng.com/document/detail/zh/kunpengsdss/ecosystemEnable/Ceph/kunpengcephobject_04_0011.html)”相关内容。
+    创建EC存储池请参考《Ceph对象存储 部署指南（CentOS 7.6&openEuler 20.03）》中的“[创建存储池](https://www.hikunpeng.com/document/detail/zh/kunpengsdss/ecosystemEnable/Ceph/kunpengcephobject_DG_04_0030.html)”相关内容。
 
     >![](public_sys-resources/icon-note.gif) **说明：** 
     > 

@@ -88,7 +88,7 @@ Ceph集群部署各客户端IP地址举例如[**表 4** 客户端部署示例](#
 
 通过叠加EC Turbo以及这些基础优化代码后，读写性能有较为明显的提升。这两部分优化已合并在同一个补丁当中。以下是具体的编译部署指导。
 
-1. 请参见《[EC Turbo特性指南](ec_turbo_feature_guide.md)》的“EC Turbo安装包获取”章节，完成安装包获取的操作。
+1. 请参见《EC Turbo特性指南》的[EC Turbo安装包获取](https://www.hikunpeng.com/document/detail/zh/boostsds/ecturbo/docs/zh/ec_turbo_feature_guide.md#ec-turbo%E5%AE%89%E8%A3%85%E5%8C%85%E8%8E%B7%E5%8F%96)章节，完成安装包获取的操作。
 
 2. 获取Ceph源码。
     1. 下载[ceph-14.2.10.tar.gz](https://download.ceph.com/tarballs/ceph-14.2.10.tar.gz)源码包。
@@ -128,11 +128,11 @@ Ceph集群部署各客户端IP地址举例如[**表 4** 客户端部署示例](#
     >yum install libhugetlbfs
     >```
 
-6. 请参见[编译Ceph并验证](https://www.hikunpeng.com/document/detail/zh/boostsds/datacomp/docs/zh/data_compaction_feature_guide.md)完成Ceph的编译与验证。
+6. 请参见[编译Ceph并验证](https://www.hikunpeng.com/document/detail/zh/boostsds/datacomp/docs/zh/data_compaction_feature_guide.md#编译ceph并验证)完成Ceph的编译与验证。
 
-7. 请参见[生成Ceph RPM包](https://www.hikunpeng.com/document/detail/zh/boostsds/datacomp/docs/zh/data_compaction_feature_guide.md)完成Ceph RPM包的制作。
+7. 请参见[生成Ceph RPM包](https://www.hikunpeng.com/document/detail/zh/boostsds/datacomp/docs/zh/data_compaction_feature_guide.md#生成数据压紧算法rpm包)完成Ceph RPM包的制作。
 
-8. 请参见[部署Ceph集群](https://www.hikunpeng.com/document/detail/zh/boostsds/datacomp/docs/zh/data_compaction_feature_guide.md)完成Ceph集群的部署。
+8. 请参见[部署Ceph集群](https://www.hikunpeng.com/document/detail/zh/boostsds/datacomp/docs/zh/data_compaction_feature_guide.md#编译部署ceph)完成Ceph集群的部署。
 
     >![](public_sys-resources/icon-note.gif) **说明：** 
     >本次环境采用的数据盘全部为NVMe，因此在部署OSD节点时不需要对OSD进行分区划分，直接使用NVME盘做OSD的数据盘即可。为充分发挥硬件性能，每台服务器上最佳部署的OSD节点数量为24个，建议对每块NVMe盘划分为三个分区，然后进行OSD的部署。
