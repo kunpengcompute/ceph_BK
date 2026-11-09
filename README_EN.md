@@ -1,5 +1,7 @@
 # README
 
+English | [简体中文](./README.md)
+
 ## Project Introduction
 
 With the rapid development of 5G, AI, and cloud computing services, data volumes are growing explosively. Diversified services pose stricter performance requirements on distributed storage systems. Maintaining high IOPS in erasure coding (EC) mode, reducing cross-node communication latency, and improving storage space utilization have become the core challenges faced by modern large-scale clusters.

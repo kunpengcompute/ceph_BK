@@ -412,7 +412,7 @@ Configuring huge pages for the data segment can reduce the probability of transl
     >
     >    ![](figures/zh-cn_image_0000002520913158.png)
     >
-    >    If the command output is `4096`, the kernel page size is 4 KB. If not, perform compilation and installation by following instructions in [Compiling the Kernel](https://www.hikunpeng.com/document/detail/en/kunpengsdss/basicAccelFeatures/cacheAccel/kunpengbcache_06_0003.html) in the *Bcache User Guide*.
+    >    If the command output is `4096`, the kernel page size is 4 KB. If not, perform compilation and installation by following instructions in [Compiling the Kernel](https://www.hikunpeng.com/document/detail/en/kunpengaccel/storage/cacheAccel/kunpengbcache_06_0003.html) in the *Bcache User Guide*.
     > - The memory capacity occupied by system huge pages must be greater than or equal to the memory required by OSDs on the current node (`osd_memory_target` \* Number of OSDs). For example, if each node is deployed with 24 OSDs and `osd_memory_target` is set to 10 GB, the hugepage memory must be at least 240 GB. In the 4 KB kernel page environment, the size of a huge page is 2 MB. Therefore, the number of huge pages must be at least 120,000.
     > - If the system has been running for a long time, the memory may be too fragmented to allocate a certain number of huge pages. In this case, you can add the hugepage allocation options to the configurations of the corresponding kernel (run the `uname -r` command to query) and reboot the server to validate the modification.
     >   1. Open the `grub.cfg` file and add `hugepagesz=2M` and `hugepages=163840` to the file.

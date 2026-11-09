@@ -1,5 +1,7 @@
 # EC Turbo特性指南
 
+本文档介绍EC Turbo特性的使能方法，该特性提升长度在一个条带内的数据的I/O读写性能，适用于需要在Ceph 14.2.8上使能EC Turbo的用户。
+
 ## 介绍<a name="ZH-CN_TOPIC_0000002520752324"></a>
 
 EC Turbo是华为自研的Ceph纠删码存储池性能优化特性库。EC Turbo提升了长度在一个条带内的数据的I/O读写性能。本文指导用户如何在Ceph上使能EC Turbo。
@@ -110,7 +112,7 @@ Ceph的数据存储池分为副本和EC两种类型。EC是一种数据保护方
 
     在合入补丁时会提示类似下图的src/isa-l相关信息，该信息可以忽略。后文将通过升级isa-l解决此问题。
 
-    ![](figures/zh-cn_image_0000002520912324.png)
+    ![合入ceph-14.2.8-ec_turbo-release.patch时终端输出的src/isa-l相关提示回显](figures/zh-cn_image_0000002520912324.png)
 
 ### 制作liboath-devel包<a name="ZH-CN_TOPIC_0000002520912320"></a>
 
@@ -201,7 +203,7 @@ Ceph的数据存储池分为副本和EC两种类型。EC是一种数据保护方
 
 3. 在文件中添加**openEuler**。
 
-    ![](figures/zh-cn_image_0000002551792323.png)
+    ![在install-deps.sh的依赖安装列表中添加openEuler发行版名称的编辑界面](figures/zh-cn_image_0000002551792323.png)
 
 4. 创建libkps\_bluestore.so与libkps\_ec.so。
 
@@ -222,7 +224,7 @@ Ceph的数据存储池分为副本和EC两种类型。EC是一种数据保护方
 
 2. 按“i“进入编辑模式，添加`sslverify=false`和`deltarpm=0`。
 
-    ![](figures/zh-cn_image_0000002520912330.png)
+    ![在vim编辑/etc/yum.conf时新增sslverify=false与deltarpm=0两行的编辑界面](figures/zh-cn_image_0000002520912330.png)
 
 3. 按`Esc`键退出编辑模式，输入`:wq!`后`Enter`键保存并退出文件。
 
@@ -257,7 +259,7 @@ Ceph的数据存储池分为副本和EC两种类型。EC是一种数据保护方
 
         升级成功后，在`isa-l/erasure_code/`目录下有`aarch64`目录。
 
-        ![](figures/zh-cn_image_0000002551792327.png)
+        ![升级isa-l后erasure_code目录下出现aarch64子目录的文件列表回显](figures/zh-cn_image_0000002551792327.png)
 
 2. 安装依赖。
 
@@ -279,11 +281,11 @@ Ceph的数据存储池分为副本和EC两种类型。EC是一种数据保护方
         ${CMAKE} -DCMAKE_BUILD_TYPE=RelWithDebInfo $ARGS "$@" .. || exit 1
         ```
 
-        ![](figures/zh-cn_image_0000002551872317.png)
+        ![在vim编辑do_cmake.sh时CMAKE编译命令行所在位置的编辑界面](figures/zh-cn_image_0000002551872317.png)
 
         并注释`git submodule update --init --recursive`，防止做RPM包时将isa-l回退到旧版。
 
-        ![](figures/zh-cn_image_0000002551792329.png)
+        ![在do_cmake.sh中注释git submodule update --init --recursive行的编辑界面](figures/zh-cn_image_0000002551792329.png)
 
     3. 按`Esc`键退出编辑模式，输入`:wq!`后按`Enter`键保存并退出文件。
 
@@ -308,7 +310,7 @@ Ceph的数据存储池分为副本和EC两种类型。EC是一种数据保护方
     ctest3 -V -R unittest_erasure_code
     ```
 
-    ![](figures/zh-cn_image_0000002551792333.gif)
+    ![执行ctest3 -V -R unittest_erasure_code进行UT测试的终端输出动态回显](figures/zh-cn_image_0000002551792333.gif)
 
 7. 删除`build`目录。
 
@@ -337,7 +339,7 @@ Ceph的数据存储池分为副本和EC两种类型。EC是一种数据保护方
 
     2. 按`i`进入编辑模式，修改`%_topdir`为`/home/rpmbuild`。
 
-        ![](figures/zh-cn_image_0000002520912328.gif)
+        ![在vim编辑/root/.rpmmacros时将%_topdir修改为/home/rpmbuild的界面](figures/zh-cn_image_0000002520912328.gif)
 
     3. 按`Esc`键退出编辑模式，输入`:wq!`后按`Enter`键保存并退出文件。
 
@@ -449,7 +451,7 @@ Ceph的数据存储池分为副本和EC两种类型。EC是一种数据保护方
 
 1. 使能EC Turbo特性。
 
-    创建EC存储池请参考《Ceph对象存储 部署指南（CentOS 7.6&openEuler 20.03）》中的“[创建存储池](https://www.hikunpeng.com/document/detail/zh/kunpengsdss/ecosystemEnable/Ceph/kunpengcephobject_04_0011.html)”相关内容。
+    创建EC存储池请参考《Ceph对象存储 部署指南（CentOS 7.6&openEuler 20.03）》中的“[创建存储池](https://www.hikunpeng.com/document/detail/zh/kunpengsdss/ecosystemEnable/Ceph/kunpengcephobject_DG_04_0030.html)”相关内容。
 
     >![](public_sys-resources/icon-note.gif) **说明：** 
     > 
@@ -497,7 +499,7 @@ Ceph的数据存储池分为副本和EC两种类型。EC是一种数据保护方
     > 
     > - EC Turbo的主要业务封装在libkps\_ec动态库。该动态库不使用Ceph的日志系统，所以需要新增日志。
     > - 一般情况下，Ceph的日志记录在`/var/log/ceph`目录里。如果定义其他目录，用户需要确保Ceph对应用户可以对该目录读写。
-    > - 日志等级分为文件日志等级和内存日志等级，两个等级需要分别定义。一般情况下内存日志记录的内容比文件日志记录的更详细。日志等级必须在\[`CRITICAL=0`，`ERROR=1`，`WARNING=2`，`INFORMATION=3`，`DEBUG=4`\]中选择。`mem_log_size`的范围是100-1000。
+    > - 日志等级分为文件日志等级和内存日志等级，两个等级需要分别定义。一般情况下内存日志记录的内容比文件日志记录的更详细。日志等级必须在\[`CRITICAL=0`，`ERROR=1`，`WARNING=2`，`INFORMATION=3`，`DEBUG=4`\]中选择。`kpsec_log_memlogsize`的范围是100-1000。
     > - 用户在OSD进程运行时修改kpsec日志参数，需要重启OSD进程使之生效。
     > - 如果不方便重启OSD进程，可以使用`ceph tell osd.<OSD编号> injectargs --<参数名>=<参数值>`命令在线修改参数，之后执行`ceph tell osd.<OSD编号> reload_kps_conf`重载kpsec日志参数。
 
@@ -520,7 +522,7 @@ Ceph的数据存储池分为副本和EC两种类型。EC是一种数据保护方
 
     2. 执行EC池的数据读写业务，查看编号3的ceph-osd日志。日志中如有`partial_write=1 partial_update=1`的字样表示EC Turbo已生效。
 
-        ![](figures/zh-cn_image_0000002520752340.png)
+        ![ceph-osd日志中出现partial_write=1 partial_update=1字样说明EC Turbo已生效的回显](figures/zh-cn_image_0000002520752340.png)
 
     3. 将该ceph-osd的日志等级改回默认值。
 
@@ -536,7 +538,7 @@ Logrotate是Linux系统中常用的日志管理程序，Crontab是基于时间�
 
 `/etc/logrotate_sdslog.conf`文件是EC Turbo配套的日志文件管理参数，该文件在安装EC Turbo时安装到指定目录。该文件的内容如下：
 
-```txt
+```ini
 /var/log/ceph/kpsec*.log {
     rotate 30
     daily
@@ -607,7 +609,7 @@ yum install -y lttng-ust-devel keyutils-libs-devel openldap-devel leveldb-devel 
 
 ceph-deploy mon create-initial初始化失败。
 
-![](figures/zh-cn_image_0000002520752332.png)
+![执行ceph-deploy mon create-initial初始化失败时的终端报错回显](figures/zh-cn_image_0000002520752332.png)
 
 **关键过程、根本原因分析<a name="zh-cn_topic_0000001590949856_section35471290"></a>**
 
@@ -635,7 +637,7 @@ ceph-deploy mon create-initial初始化失败。
 
 查询Ceph状态时报告`no module named werkzeug.serving`。
 
-![](figures/zh-cn_image_0000002551872307.png)
+![查询Ceph状态时终端提示no module named werkzeug.serving的报错回显](figures/zh-cn_image_0000002551872307.png)
 
 **关键过程、根本原因分析<a name="zh-cn_topic_0000001640870397_section35471290"></a>**
 
@@ -655,7 +657,7 @@ pip install werkzeug
 
 查询Ceph状态时报告`No module named OpenSSL`。
 
-![](figures/zh-cn_image_0000002551872311.jpg)
+![查询Ceph状态时终端提示No module named OpenSSL的报错回显](figures/zh-cn_image_0000002551872311.jpg)
 
 **关键过程、根本原因分析<a name="zh-cn_topic_0000001640750997_section35471290"></a>**
 
@@ -684,7 +686,7 @@ yum install python3-pyOpenSSL.noarch
     no libkpsbluestore.so found
     ```
 
-    ![](figures/zh-cn_image_0000002520752338.png)
+    ![编译时CMake提示找不到kps_bluestore库的报错回显](figures/zh-cn_image_0000002520752338.png)
 
 - 找不到lkps\_ec库。
 
@@ -693,7 +695,7 @@ yum install python3-pyOpenSSL.noarch
     collect2: error: ld returned 1 exit status
     ```
 
-    ![](figures/zh-cn_image_0000002520912322.png)
+    ![编译链接阶段提示cannot find -lkps_ec的报错回显](figures/zh-cn_image_0000002520912322.png)
 
 **关键过程、根本原因分析<a name="zh-cn_topic_0000001640750989_section35471290"></a>**
 
@@ -716,7 +718,7 @@ yum install python3-pyOpenSSL.noarch
 
 ## 修订记录
 
-| 发布日期  | 修改说明       |
-|-------|----------|
-| 2024-12-30 | 第二次正式发布。<br> EC Turbo支持Ceph全闪存。 |
-| 2022-12-17 | 第一次正式发布。|
+| 文档版本 | 发布日期  | 修改说明       |
+|-------|-------|----------|
+| 02 | 2024-12-30 | 第二次正式发布。<br> EC Turbo支持Ceph全闪存。 |
+| 01 | 2022-12-17 | 第一次正式发布。|
